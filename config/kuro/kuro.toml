@@ -1,0 +1,80 @@
+# ─────────────────────────────────────────────────────────────────────
+# Kuro — central settings for the whole desktop.
+#
+# This file is the single source of truth. Hyprland, kitty and the
+# Quickshell shell all derive their colors, fonts and visual settings
+# from here.
+#
+#   Edit this file, then run:   kurogen
+#   List themes:                kurogen themes
+#   Switch theme:               kurogen set theme.scheme gruvbox-dark
+#
+# The shell watches this file, so changes are also applied automatically
+# (regenerated configs + Hyprland reload + kitty reload).
+# ─────────────────────────────────────────────────────────────────────
+
+[theme]
+# Active colorscheme: the id of a [themes.<id>] table below.
+scheme = "jellybeans"
+
+# Hyprland window look
+rounding = 1
+gaps_in = 4
+gaps_out = 8
+border_size = 2
+blur = true
+animations = true
+active_opacity = 1.0
+inactive_opacity = 1.0
+shadow = true
+shadow_range = 4
+shadow_power = 3
+shadow_color = "0x990d0d0d"
+
+# Quickshell shell sizes (square corners everywhere)
+bar_height = 30
+popup_gap = 14
+radius = 0
+radius_small = 0
+padding = 16
+gap = 10
+
+[fonts]
+ui_family = "JetBrainsMono Nerd Font"
+ui_size = 15
+icon_size = 20
+terminal_family = "JetBrainsMono Nerd Font"
+terminal_size = 11.5
+
+[terminal]
+opacity = 0.97
+padding = 10
+cursor_shape = "block"
+scrollback = 10000
+
+[apps]
+terminal = "kitty"
+file_manager = "dolphin"
+menu = "hyprlauncher"
+wallpaper_dir = "~/Pictures/Wallpaper"
+wallpaper_picker = "quickshell -c hyprquickpaper"
+
+[hypr]
+kb_layout = "us"
+kb_options = "altwin:swap_alt_win"   # swap Alt <-> Super
+follow_mouse = 1                      # focus follows cursor movement
+mouse_refocus = false                 # do not refocus the hovered window on pointer motion
+blur_size = 3
+blur_passes = 1
+blur_vibrancy = 0.1696
+rounding_power = 2
+
+# ─────────────────────────────────────────────────────────────────────
+# Themes
+#
+# Each colorscheme is a separate file in ~/.config/kuro/themes/<name>.toml
+# (Omarchy colors.toml format). Pick one with [theme].scheme above.
+#
+#   kurogen themes                    list available themes
+#   kurogen scheme tokyo-night        switch theme
+# ─────────────────────────────────────────────────────────────────────

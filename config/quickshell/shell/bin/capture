@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+home="${HOME:?}"
+state_file="$home/.cache/quickshell/gpu-screen-recorder.pid"
+
+notify() {
+    command -v notify-send >/dev/null 2>&1 && notify-send -a Quickshell "$1" "$2" || true
+}
+
+area_geometry() {
+    case "$1" in
+        full) printf '%s' screen ;;
+        window) printf '%s' focused ;;
+        selection) slurp -f '%wx%h+%x+%y' ;;
+        *) return 2 ;;
+    esac
+}
+
+case "${1:-}" in
+    screenshot)
+        area="${2:-full}"
+        outdir="$home/Pictures/Screenshots"
+        mkdir -p "$outdir"
+        file="$outdir/$(date +%Y%m%d-%H%M%S).png"
+        case "$area" in
+            full) grim "$file" ;;
+            window)
+                geometry="$(hyprctl activewindow -j | jq -er '"\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"')"
+                grim -g "$geometry" "$file"
+                ;;
+            selection)
+                geometry="$(slurp)" || exit 0
+                grim -g "$geometry" "$file"
+                ;;
+            *) exit 2 ;;
+        esac
+        notify "Screenshot saved" "$file"
+        ;;
+    record)
+        area="${2:-full}"
+        audio="${3:-none}"
+        if [[ -s "$state_file" ]] && kill -0 "$(cat "$state_file")" 2>/dev/null; then
+            notify "Recording already running" "Stop it from the clock tools menu."
+            exit 1
+        fi
+        command -v gpu-screen-recorder >/dev/null || { notify "Recorder unavailable" "Install gpu-screen-recorder."; exit 127; }
+        geometry="$(area_geometry "$area")" || exit 0
+        outdir="$home/Videos/Recordings"
+        mkdir -p "$outdir"
+        file="$outdir/$(date +%Y%m%d-%H%M%S).mp4"
+        args=(-w "$geometry" -f 60 -o "$file")
+        case "$audio" in
+            none) ;;
+            system) args+=(-a default_output) ;;
+            external) args+=(-a default_input) ;;
+            both) args+=(-a 'default_output|default_input') ;;
+            *) exit 2 ;;
+        esac
+        mkdir -p "$(dirname "$state_file")"
+        gpu-screen-recorder "${args[@]}" &
+        recorder_pid=$!
+        printf '%s\n' "$recorder_pid" > "$state_file"
+        notify "Screen recording started" "$file"
+        wait "$recorder_pid" || true
+        rm -f "$state_file"
+        notify "Screen recording saved" "$file"
+        ;;
+    stop)
+        if [[ -s "$state_file" ]]; then
+            kill -INT "$(cat "$state_file")" 2>/dev/null || true
+        fi
+        ;;
+    *) echo "Usage: capture screenshot <full|window|selection> | record <area> <audio> | stop" >&2; exit 2 ;;
+esac
