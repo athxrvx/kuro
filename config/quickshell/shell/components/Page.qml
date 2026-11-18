@@ -13,6 +13,7 @@ Item {
     id: root
 
     property bool active: false
+    property bool showScrollIndicator: true
     property int pollInterval: 2000
     readonly property real innerWidth: col.width
 
@@ -48,7 +49,7 @@ Item {
 
     // Thin scroll indicator
     Rectangle {
-        visible: flick.contentHeight > flick.height
+        visible: root.showScrollIndicator && flick.contentHeight > flick.height
         anchors.right: parent.right
         width: 3
         radius: 1.5

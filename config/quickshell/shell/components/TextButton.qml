@@ -8,12 +8,13 @@ Rectangle {
 
     property string text: ""
     property bool primary: false
+    property bool sharp: false
 
     signal clicked()
 
     implicitWidth: label.implicitWidth + 24
     implicitHeight: 28
-    radius: Theme.radiusSmall
+    radius: root.sharp ? 0 : Theme.radiusSmall
     color: primary ? Theme.accent : (mouse.containsMouse ? Theme.surface2 : "transparent")
     border.color: primary ? Theme.accent : Theme.border
     opacity: enabled ? 1 : 0.4
@@ -32,8 +33,9 @@ Rectangle {
     MouseArea {
         id: mouse
         anchors.fill: parent
+        enabled: root.enabled
         hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
+        cursorShape: root.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         onClicked: root.clicked()
     }
 }

@@ -26,8 +26,8 @@ PanelWindow {
     }
     margins {
         top: root.barOffset + Theme.popupGap
-        bottom: Theme.gap
-        right: Theme.gap
+        bottom: Theme.popupGap
+        right: Theme.popupGap
     }
 
     implicitWidth: Config.notifWidth

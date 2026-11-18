@@ -4,7 +4,7 @@
 
 **A minimal settings window and status bar for Hyprland, built with [Quickshell](https://quickshell.org).**
 
-Colors and fonts come from one `~/.config/kuro/kuro.toml` · 10 pages · 7 bar layouts · Quickshell notifications and lock screen
+Colors and fonts come from one `~/.config/kuro/kuro.toml` · 10 pages · 3 sharp bar layouts · Quickshell notifications and lock screen
 
 ![Quickshell](https://img.shields.io/badge/Quickshell-0.2+-1e1e2e?style=flat-square)
 ![QML](https://img.shields.io/badge/QML-Qt_6-41cd52?style=flat-square&logo=qt&logoColor=white)
@@ -24,7 +24,7 @@ Colors and fonts come from one `~/.config/kuro/kuro.toml` · 10 pages · 7 bar l
 My personal desktop shell for Hyprland. It started as a small control center and grew into two things that live in the same Quickshell config:
 
 - **Control Center**, a regular app window (not a panel) with a sidebar and pages for network, sound, display, wallpaper, clipboard and so on.
-- **Bar**, a status bar that replaces Waybar. It ships with seven layouts ported from my old Waybar setup, and you can switch between them without restarting anything.
+- **Bar**, a status bar that replaces Waybar. It has three sharp layouts: Full, Float, and Island.
 
 Everything reads its colors, fonts and visual settings from one central file: `~/.config/kuro/kuro.toml`. Hyprland, kitty and this shell are all generated from it by `bin/kurogen`, so terminal and shell always match. Set `Config.usePywal = true` to let pywal override the palette at runtime.
 
@@ -58,18 +58,11 @@ Everything reads its colors, fonts and visual settings from one central file: `~
 <details>
 <summary><b>Bar layouts</b></summary>
 <br>
-<tr>
-  <p>Omarchy style bar
-  <td><img src="screenshots/bar-omarchy.png" alt="omarchy layout"><br></td>
-</tr>
-<tr>
-  <p>Cozy style bar
- <img src="screenshots/bar-cozy.png" alt="cozy layout"><br>
-</tr>
-<tr>
-  <p>Everforest style bar
-<img src="screenshots/bar-everforest.png" alt="everforest layout"><br>
-</tr>
+All layouts use sharp corners:
+
+- **Full** — full-width bar based on the Omarchy layout.
+- **Float** — inset bar with space around its edges.
+- **Island** — separate left and right groups, with the dynamic island centered.
 
 </details>
 
@@ -87,7 +80,7 @@ Everything reads its colors, fonts and visual settings from one central file: `~
 | **Sound** | volume and mic, pick default output and input | `wpctl` |
 | **Display** | brightness, night light with color temperature, monitor info | `brightnessctl`, `hyprsunset` |
 | **Appearance** | pywal palette, bar layout picker, gaps / border / rounding / blur / animations, notifications | `hyprctl`, Quickshell |
-| **Wallpaper** | thumbnail grid that calls your own wallpaper script, plus a button for your picker | `wallset-backend`, `hyprquickpaper` |
+| **Wallpaper** | built-in thumbnail picker using the running awww daemon | `awww` |
 | **Clipboard** | text and image history with thumbnails, filter, copy again, delete | `cliphist`, `wl-clipboard` |
 | **Power** | battery, power profile, lock / suspend / log out / restart / shut down | `upower`, `powerprofilesctl` |
 | **Keybinds** | every active Hyprland bind, filterable | `hyprctl binds` |
@@ -97,11 +90,11 @@ Log out, Restart and Shut down need a second click within 5 seconds, so a stray 
 ### Bar
 
 - One bar per monitor, with workspaces (numbers, kanji or roman numerals), active app, clock, tray, network, bluetooth, volume, mic, brightness, battery, CPU, memory, power profile, notifications and clipboard.
-- Seven layouts: `omarchy`, `minimal`, `full`, `cozy`, `everforest`, `border-only`, `hyprnova`. Three styles: a solid bar, separate "islands", or bordered modules only.
+- Three sharp layouts: `full` (full-width), `float` (inset), and `island` (separate left, center, and right groups).
 - Every indicator opens the matching Control Center page on click. Volume, mic and brightness react to scroll.
 - The clock shows a small calendar on hover or right-click.
 - The Quickshell lock screen uses the current wallpaper with a blurred backdrop and PAM password entry; `hypridle` locks after five idle minutes and before suspend.
-- Hovering the clock reveals quick actions for screenshots, color picking, clipboard history and GPU screen recording.
+- Press `Print` to freeze the focused monitor and open the sharp-edged screenshot and recording overlay. The clock opens its calendar only.
 - Calendar tasks are stored as Markdown in `~/.config/kuro/task.md`.
 - Quickshell owns notifications and history. Left click opens the notification center, right click toggles Do Not Disturb, middle click clears everything.
 - The last picked layout is remembered across logins.
@@ -258,7 +251,7 @@ Switch from the Appearance page, from rofi, or from a terminal:
 
 ```sh
 bar-layout            # rofi menu
-bar-layout cozy       # jump straight to one
+bar-layout float      # jump straight to one
 bar-layout next       # cycle
 ```
 
@@ -273,7 +266,7 @@ Layouts live in `bar/BarState.qml`. Adding one is a single entry:
 },
 ```
 
-Available modules: `workspaces` (`:kanji`, `:roman`), `window` (`:app` for the app name only), `clock`, `date`, `datetime`, `launcher`, `network`, `bluetooth`, `volume`, `mic`, `brightness`, `battery`, `cpu`, `memory`, `profile`, `notification`, `clipboard`, `tray`, `power`, `control`.
+Available modules: `workspaces` (`:kanji`, `:roman`), `window` (`:app` for the app name only), `clock`, `date`, `datetime`, `launcher`, `network`, `bluetooth`, `volume`, `mic`, `brightness`, `battery`, `cpu`, `memory`, `profile`, `notification`, `clipboard`, `tray`, `control`.
 
 Click actions for each module are in `bar/Module.qml`. Every module has `onClicked`, `onRightClicked`, `onMiddleClicked` and `onScrolled`, so changing what a click does is a one-line edit.
 
@@ -346,8 +339,8 @@ Paths and external commands are in `config/Config.qml`:
 | `usePywal` | `false` | `true` = follow pywal colors instead of the built-in palette |
 | `walColors` | `~/.cache/wal/colors.json` | watched by Theme when `usePywal` is on |
 | `wallpaperDir` | `~/Pictures/Wallpaper` | overridden by `[apps].wallpaper_dir` |
-| `wallpaperSet` | `~/.local/bin/wallset-backend "$1"` | runs when a thumbnail is clicked, `$1` is the image path |
-| `wallpaperPicker` | `quickshell -c hyprquickpaper` | overridden by `[apps].wallpaper_picker` |
+| `wallpaperSet` | `awww img --transition-type grow --transition-pos center --transition-duration 1.1 --transition-fps 60 "$1"` | reveals the selected image with a centered, 1.1-second grow transition |
+| `wallpaperPicker` | `qs -c shell ipc call stylepicker wallpaper` | opens the built-in wallpaper picker; overridden by `[apps].wallpaper_picker` |
 | `wallpaperLog` | `~/.cache/wallset-backend.log` | backend output goes here |
 | `clipLimit` | `80` | how many clipboard entries to show |
 | `terminal` | `["kitty", "-e"]` | overridden by `[apps].terminal` |
@@ -355,7 +348,7 @@ Paths and external commands are in `config/Config.qml`:
 | `kuroTheme` | `~/.cache/kuro/theme.json` | generated for the shell |
 | `nightLightDefault` | `4500` | starting night light temperature in K |
 | `barEnabled` | `true` | show the bar on start |
-| `barLayout` | `omarchy` | layout used until you pick one |
+| `barLayout` | `full` | layout used until you pick one |
 | `calendarOnHover` | `true` | set to `false` to open the calendar on right-click only |
 | `launcherCommand` | `rofi -show drun` | what the launcher module runs |
 

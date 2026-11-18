@@ -1,4 +1,4 @@
-// Appearance: pywal palette, bar layout, Hyprland options (gaps, border, rounding, blur, animations).
+// Appearance: palette, bar layout, blur and animation preferences.
 
 import QtQuick
 import QtQuick.Layouts
@@ -79,44 +79,6 @@ Page {
     }
 
     Hint { text: "Layouts and modules live in bar/BarState.qml. From a terminal or rofi: bar-layout." }
-
-    // ── Hyprland ─────────────────────────────────────────────────────
-    SectionLabel { Layout.topMargin: 6; text: "hyprland" }
-
-    Hint {
-        visible: !Hypr.ready
-        warn: true
-        text: "Couldn't read options from hyprctl."
-    }
-
-    GridLayout {
-        Layout.fillWidth: true
-        columns: 2
-        columnSpacing: 24
-        rowSpacing: 14
-        enabled: Hypr.ready
-
-        ValueSlider {
-            label: "gaps in"; from: 0; to: 30; suffix: "px"
-            value: Hypr.gapsIn
-            onMoved: v => Hypr.set("gapsIn", v)
-        }
-        ValueSlider {
-            label: "gaps out"; from: 0; to: 60; suffix: "px"
-            value: Hypr.gapsOut
-            onMoved: v => Hypr.set("gapsOut", v)
-        }
-        ValueSlider {
-            label: "border"; from: 0; to: 8; suffix: "px"
-            value: Hypr.borderSize
-            onMoved: v => Hypr.set("borderSize", v)
-        }
-        ValueSlider {
-            label: "rounding"; from: 0; to: 30; suffix: "px"
-            value: Hypr.rounding
-            onMoved: v => Hypr.set("rounding", v)
-        }
-    }
 
     SettingRow {
         Layout.topMargin: 4

@@ -349,7 +349,7 @@ Page {
                 anchors.margins: 10
                 text: Weather.available ? Weather.icon : ""
                 color: Theme.rose
-                font.family: Theme.font
+                font.family: Theme.iconFont
                 font.pixelSize: 32
             }
             ColumnLayout {

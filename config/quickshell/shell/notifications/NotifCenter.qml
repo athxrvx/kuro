@@ -27,11 +27,11 @@ PanelWindow {
     anchors { top: true; right: true }
     margins {
         top: root.barOffset + Theme.popupGap
-        right: Theme.gap
+        right: Theme.popupGap
     }
 
-    implicitWidth: Config.notifWidth + 24
-    implicitHeight: Math.min(root.maxHeight, header.implicitHeight + content.implicitHeight + 40)
+    implicitWidth: Math.min(Config.notifWidth + 48, (screen?.width ?? 1280) - Theme.popupGap * 2)
+    implicitHeight: Math.min(root.maxHeight, header.implicitHeight + content.implicitHeight + 36)
     color: "transparent"
 
     exclusionMode: ExclusionMode.Ignore
@@ -58,6 +58,7 @@ PanelWindow {
         anchors.fill: parent
         radius: 0
         color: Theme.bg
+        border.width: 1
         border.color: Theme.border
 
         opacity: Notifications.centerOpen ? 1 : 0
@@ -79,46 +80,64 @@ PanelWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: 12
-            spacing: 10
+            anchors.margins: 16
+            spacing: 12
 
-            RowLayout {
+            Rectangle {
                 Layout.fillWidth: true
-                spacing: 8
+                implicitHeight: dndRow.implicitHeight + 20
+                color: Theme.surface
+                border.width: 1
+                border.color: Theme.border
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
+                RowLayout {
+                    id: dndRow
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 10
+
                     Text {
-                        text: "NOTIFICATIONS"
-                        color: Theme.muted
-                        font.family: Theme.font
-                        font.pixelSize: 12
-                        font.letterSpacing: 1.5
+                        text: Notifications.dnd ? Icons.bellOff : Icons.bell
+                        color: Notifications.dnd ? Theme.accent : Theme.subtext
+                        font.family: Theme.iconFont
+                        font.pixelSize: Theme.iconSize
                     }
-                    Text {
-                        text: Notifications.count > 0 ? Notifications.count + " New" : "All done"
-                        color: Theme.text
-                        font.family: Theme.font
-                        font.pixelSize: 24
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            text: "Do not disturb"
+                            color: Theme.text
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontSize - 1
+                            font.bold: true
+                        }
+                        Text {
+                            text: Notifications.dnd ? "Alerts are paused" : "Allow pop-up alerts"
+                            color: Theme.muted
+                            font.family: Theme.font
+                            font.pixelSize: 12
+                        }
+                    }
+
+                    Switch { checked: Notifications.dnd; onToggled: Notifications.toggle() }
+
+                    Rectangle {
+                        Layout.preferredWidth: 1
+                        Layout.preferredHeight: 26
+                        color: Theme.border
+                    }
+
+                    TextButton {
+                        text: "Clear all"
+                        sharp: true
+                        enabled: Notifications.count > 0
+                        onClicked: Notifications.clearAll()
                     }
                 }
-
-                TextButton {
-                    text: "Clear all"
-                    enabled: Notifications.count > 0
-                    onClicked: Notifications.clearAll()
-                }
             }
-
-            SettingRow {
-                icon: Notifications.dnd ? Icons.bellOff : Icons.bell
-                title: "Do not disturb"
-                sub: Notifications.dnd ? "Popup Hidden" : "Popup Show"
-                Switch { checked: Notifications.dnd; onToggled: Notifications.toggle() }
-            }
-
-            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
         }
 
         // ── List ──────────────────────────────────────────────────────
@@ -128,8 +147,10 @@ PanelWindow {
             anchors.right: parent.right
             anchors.top: header.bottom
             anchors.bottom: parent.bottom
-            anchors.margins: 8
-            anchors.topMargin: 4
+            anchors.leftMargin: 18
+            anchors.rightMargin: 18
+            anchors.bottomMargin: 18
+            anchors.topMargin: 0
             contentHeight: content.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
             clip: true
@@ -137,18 +158,19 @@ PanelWindow {
             ColumnLayout {
                 id: content
                 width: flick.width
-                spacing: 2
+                spacing: 12
 
                 Text {
                     visible: Notifications.count === 0
                     Layout.fillWidth: true
-                    Layout.topMargin: 24
-                    Layout.bottomMargin: 24
+                    Layout.topMargin: 44
+                    Layout.bottomMargin: 44
                     horizontalAlignment: Text.AlignHCenter
-                    text: "All clear"
-                    color: Theme.muted
+                    text: "You’re all caught up"
+                    color: Theme.text
                     font.family: Theme.font
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Theme.fontSize
+                    font.bold: true
                 }
 
                 Repeater {
@@ -158,23 +180,33 @@ PanelWindow {
                         id: group
                         required property var modelData
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: 8
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Layout.topMargin: 6
-                            Layout.leftMargin: 6
+                            Layout.topMargin: 8
+                            Layout.leftMargin: 2
+                            Layout.rightMargin: 2
+                            Layout.bottomMargin: 2
 
                             Text {
                                 Layout.fillWidth: true
-                                text: group.modelData.app + "  ·  " + group.modelData.items.length
-                                color: Theme.subtext
+                                text: group.modelData.app
+                                color: Theme.text
                                 font.family: Theme.font
-                                font.pixelSize: Theme.fontSize - 2
+                                font.pixelSize: Theme.fontSize - 1
                                 font.bold: true
+                            }
+                            Text {
+                                text: String(group.modelData.items.length)
+                                color: Theme.muted
+                                font.family: Theme.font
+                                font.pixelSize: 11
+                                Layout.rightMargin: 4
                             }
                             TextButton {
                                 text: "Clear"
+                                sharp: true
                                 onClicked: group.modelData.items.slice().forEach(n => Notifications.dismiss(n))
                             }
                         }

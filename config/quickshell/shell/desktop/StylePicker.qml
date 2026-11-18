@@ -27,6 +27,7 @@ PanelWindow {
     WlrLayershell.namespace: "quickshell-style-picker"
     WlrLayershell.keyboardFocus: open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
+
     function show(which) {
         mode = which;
         if (which === "wallpaper") Wallpaper.refresh();

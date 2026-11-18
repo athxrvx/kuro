@@ -1,0 +1,15 @@
+# Kuro Zsh startup. Install/use by sourcing this from ~/.zshrc.
+for _kuro_plugin in \
+  "$ZSH_CONFIG_HOME/plugins/00-completion.zsh" \
+  "$ZSH_CONFIG_HOME/plugins/10-fzf.zsh" \
+  "$ZSH_CONFIG_HOME/plugins/20-autosuggestions.zsh" \
+  "$ZSH_CONFIG_HOME/plugins/30-zoxide.zsh" \
+  "$ZSH_CONFIG_HOME/plugins/40-shell-tools.zsh"; do
+  [[ -r "$_kuro_plugin" ]] && source "$_kuro_plugin"
+done
+unset _kuro_plugin
+
+[[ -r "$ZSH_CONFIG_HOME/themes/kuro-af.zsh-theme" ]] && source "$ZSH_CONFIG_HOME/themes/kuro-af.zsh-theme"
+
+# Must load last: it wraps ZLE widgets provided by fzf and autosuggestions.
+[[ -r "$ZSH_CONFIG_HOME/plugins/90-syntax-highlighting.zsh" ]] && source "$ZSH_CONFIG_HOME/plugins/90-syntax-highlighting.zsh"

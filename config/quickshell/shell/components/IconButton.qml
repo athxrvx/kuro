@@ -24,7 +24,7 @@ Rectangle {
         anchors.centerIn: parent
         text: root.icon
         color: root.iconColor
-        font.family: Theme.font
+        font.family: Theme.iconFont
         font.pixelSize: Theme.iconSize
     }
 

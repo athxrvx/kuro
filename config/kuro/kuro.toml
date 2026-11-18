@@ -18,11 +18,11 @@
 scheme = "jellybeans"
 
 # Hyprland window look
-rounding = 1
+rounding = 0
 gaps_in = 4
 gaps_out = 8
 border_size = 2
-blur = true
+blur = false
 animations = true
 active_opacity = 1.0
 inactive_opacity = 1.0
@@ -41,29 +41,30 @@ gap = 10
 
 [fonts]
 ui_family = "JetBrainsMono Nerd Font"
-ui_size = 15
+ui_size = 16
 icon_size = 20
 terminal_family = "JetBrainsMono Nerd Font"
 terminal_size = 11.5
 
 [terminal]
-opacity = 0.97
+opacity = 1.0
 padding = 10
 cursor_shape = "block"
 scrollback = 10000
 
 [apps]
 terminal = "kitty"
-file_manager = "dolphin"
+file_manager = "flea"
 menu = "hyprlauncher"
 wallpaper_dir = "~/Pictures/Wallpaper"
-wallpaper_picker = "quickshell -c hyprquickpaper"
+wallpaper_picker = "qs -c shell ipc call stylepicker wallpaper"
 
 [hypr]
 kb_layout = "us"
 kb_options = "altwin:swap_alt_win"   # swap Alt <-> Super
 follow_mouse = 1                      # focus follows cursor movement
 mouse_refocus = false                 # do not refocus the hovered window on pointer motion
+natural_scroll = true                 # trackpad scroll follows finger direction
 blur_size = 3
 blur_passes = 1
 blur_vibrancy = 0.1696

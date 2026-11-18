@@ -4,90 +4,112 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Network via nmcli: Wi-Fi radio, active connection, Ethernet, Wi-Fi scan & connect.
+// NetworkManager state and Wi-Fi actions used by the bar and Network page.
 Singleton {
     id: root
 
-    // Wi-Fi
     property bool enabled: false
+    property bool busy: false
     property string wifiDevice: ""
-    property string ssid: ""          // name of the active Wi-Fi connection
+    property string ssid: ""
+    property int wifiSignal: 0
     property string wifiIp: ""
-    property bool busy: false         // radio is being toggled
 
-    // Ethernet
     property string ethDevice: ""
     property bool ethConnected: false
     property string ethIp: ""
     property string ethSpeed: ""
-
     readonly property bool online: ethConnected || ssid !== ""
 
-    // Scan & connect
-    property var networks: []         // [{ ssid, signal, security, secure, active, known, profile }]
+    property var networks: []
     property bool scanning: false
     property string connecting: ""
-    property string connectingSsid: ""
     property string error: ""
+    property bool scanAfterStatus: false
 
-    function unesc(s) { return (s ?? "").replace(/\\:/g, ":"); }
+    // nmcli terse output escapes its delimiters with backslashes.
+    function fields(value, separator) {
+        const values = [];
+        let part = "", escaped = false;
+        for (const ch of (value ?? "")) {
+            if (escaped) { part += ch; escaped = false; }
+            else if (ch === "\\") escaped = true;
+            else if (ch === separator) { values.push(part); part = ""; }
+            else part += ch;
+        }
+        if (escaped) part += "\\";
+        values.push(part);
+        return values;
+    }
 
-    function refresh() {
-        if (!statusProc.running && !busy) statusProc.running = true;
+    function refresh(withScan) {
+        if (withScan) scanAfterStatus = true;
+        if (!statusProc.running) statusProc.running = true;
     }
 
     function toggle() {
         if (busy) return;
+        error = "";
         busy = true;
-        const target = !enabled;
-        enabled = target;
-        if (!target) { ssid = ""; networks = []; }
-        toggleProc.command = ["nmcli", "radio", "wifi", target ? "on" : "off"];
+        toggleProc.targetEnabled = !enabled;
+        scanAfterStatus = toggleProc.targetEnabled;
+        toggleProc.errorText = "";
+        toggleProc.command = ["nmcli", "radio", "wifi", toggleProc.targetEnabled ? "on" : "off"];
         toggleProc.running = true;
     }
 
     function scan(force) {
-        if (scanProc.running || !enabled) return;
+        if (!enabled || scanning) return;
+        error = "";
         scanning = true;
+        scanProc.stderrText = "";
         scanProc.command = ["sh", "-c", scanScript, "sh", force ? "yes" : "auto"];
         scanProc.running = true;
     }
 
     function connect(net, password) {
-        if (connectProc.running || !net || !net.ssid) return;
+        if (!net || !net.ssid || connecting !== "") return;
+        if (net.secure && !net.known && !(password ?? "")) {
+            error = "Enter the Wi-Fi password to connect.";
+            return;
+        }
         error = "";
         connecting = net.ssid;
-        connectingSsid = net.ssid;
-        if (net.known)
-            connectProc.command = ["nmcli", "--wait", "25", "connection", "up", "id", net.profile];
-        else if (net.secure)
-            connectProc.command = ["nmcli", "--wait", "25", "device", "wifi", "connect", net.ssid, "password", password ?? ""];
-        else
-            connectProc.command = ["nmcli", "--wait", "25", "device", "wifi", "connect", net.ssid];
+        connectProc.errorText = "";
+        connectProc.command = net.known
+            ? (wifiDevice
+                ? ["nmcli", "--wait", "30", "connection", "up", "uuid", net.uuid, "ifname", wifiDevice]
+                : ["nmcli", "--wait", "30", "connection", "up", "uuid", net.uuid])
+            : net.secure
+                ? (wifiDevice
+                    ? ["nmcli", "--wait", "30", "device", "wifi", "connect", net.ssid, "password", password, "ifname", wifiDevice]
+                    : ["nmcli", "--wait", "30", "device", "wifi", "connect", net.ssid, "password", password])
+                : (wifiDevice
+                    ? ["nmcli", "--wait", "30", "device", "wifi", "connect", net.ssid, "ifname", wifiDevice]
+                    : ["nmcli", "--wait", "30", "device", "wifi", "connect", net.ssid]);
         connectProc.running = true;
     }
 
     function disconnect() {
-        if (wifiDevice === "") return;
-        Quickshell.execDetached(["nmcli", "device", "disconnect", wifiDevice]);
-        ssid = "";
-        networks = networks.map(n => Object.assign({}, n, { active: false }));
+        if (!wifiDevice || connecting !== "") return;
+        connecting = ssid || "Wi-Fi";
+        connectProc.errorText = "";
+        connectProc.command = ["nmcli", "device", "disconnect", wifiDevice];
+        connectProc.running = true;
     }
 
-    // ── Status: radio, active Wi-Fi, Ethernet ─────────────────────────
-    // Lines: radio | wifiDev | connection | wifiIp | ethDev | ethState | ethIp | ethSpeed
     readonly property string statusScript: [
-        'echo "$(timeout 3 nmcli radio wifi 2>/dev/null)"',
-        'dev=$(timeout 3 nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null)',
+        'radio=$(nmcli -t radio wifi 2>/dev/null)',
+        'dev=$(nmcli -t -f DEVICE,TYPE,STATE device 2>/dev/null)',
         'w=$(printf "%s\\n" "$dev" | awk -F: \'$2=="wifi" && $3 ~ /^connected/ {print $1; exit}\')',
-        'echo "$w"',
-        'echo "$( [ -n "$w" ] && nmcli -g GENERAL.CONNECTION device show "$w" 2>/dev/null)"',
-        'echo "$( [ -n "$w" ] && ip -4 -o addr show dev "$w" 2>/dev/null | awk \'{print $4; exit}\')"',
         'e=$(printf "%s\\n" "$dev" | awk -F: \'$2=="ethernet" {print; if ($3 ~ /^connected/) exit}\' | tail -n1)',
-        'echo "${e%%:*}"',
-        'echo "${e##*:}"',
-        'echo "$( [ -n "$e" ] && ip -4 -o addr show dev "${e%%:*}" 2>/dev/null | awk \'{print $4; exit}\')"',
-        'echo "$( [ -n "$e" ] && cat "/sys/class/net/${e%%:*}/speed" 2>/dev/null)"'
+        'printf "%s\\n%s\\n" "$radio" "$w"',
+        '[ -n "$w" ] && nmcli -g GENERAL.CONNECTION device show "$w" 2>/dev/null || true',
+        '[ -n "$w" ] && nmcli -t --escape no -f IN-USE,SIGNAL device wifi list --rescan no 2>/dev/null | awk -F: \'$1=="*" {print $2; exit}\' || true',
+        '[ -n "$w" ] && ip -4 -o addr show dev "$w" 2>/dev/null | awk \'{print $4; exit}\' || true',
+        'printf "%s\\n%s\\n" "${e%%:*}" "${e#*:}"',
+        '[ -n "$e" ] && ip -4 -o addr show dev "${e%%:*}" 2>/dev/null | awk \'{print $4; exit}\' || true',
+        '[ -n "$e" ] && cat "/sys/class/net/${e%%:*}/speed" 2>/dev/null || true'
     ].join("\n")
 
     Process {
@@ -98,95 +120,105 @@ Singleton {
                 const l = text.split("\n");
                 root.enabled = l[0] === "enabled";
                 root.wifiDevice = l[1] ?? "";
-                root.ssid = root.enabled ? root.unesc(l[2]) : "";
-                root.wifiIp = l[3] ?? "";
-                root.ethDevice = l[4] ?? "";
-                root.ethConnected = /^connected/.test(l[5] ?? "");
-                root.ethIp = l[6] ?? "";
-                const sp = parseInt(l[7]);
-                root.ethSpeed = sp > 0 ? (sp >= 1000 ? sp / 1000 + " Gb/s" : sp + " Mb/s") : "";
+                root.ssid = root.enabled ? (l[2] ?? "") : "";
+                root.wifiSignal = root.ssid !== "" ? Math.max(0, Math.min(100, parseInt(l[3]) || 0)) : 0;
+                root.wifiIp = l[4] ?? "";
+                root.ethDevice = l[5] ?? "";
+                root.ethConnected = /^connected/.test(l[6] ?? "");
+                root.ethIp = l[7] ?? "";
+                const speed = parseInt(l[8]);
+                root.ethSpeed = speed > 0 ? (speed >= 1000 ? speed / 1000 + " Gb/s" : speed + " Mb/s") : "";
+                if (root.scanAfterStatus && !root.busy) {
+                    root.scanAfterStatus = false;
+                    if (root.enabled) root.scan(false);
+                }
             }
         }
     }
 
     Process {
         id: toggleProc
+        property bool targetEnabled: false
+        property string errorText: ""
+        stderr: StdioCollector { onStreamFinished: toggleProc.errorText = text.trim() }
         onExited: (code, status) => {
             root.busy = false;
+            if (code !== 0) root.error = errorText || "Could not change Wi-Fi state.";
             root.refresh();
-            if (root.enabled) root.scan(false);
+            if (code === 0 && targetEnabled) root.scanAfterStatus = true;
+            if (code === 0 && !targetEnabled) root.networks = [];
         }
     }
 
-    // ── Scan: network list + saved profiles ───────────────────────────
-    // N|IN-USE:SIGNAL:SECURITY:SSID     K|ssid|profile-name
+    // Output records: N|IN-USE:SIGNAL:SECURITY:SSID, K|SSID|UUID.
     readonly property string scanScript: [
-        'timeout 15 nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan "$1" 2>/dev/null | sed "s/^/N|/"',
-        'nmcli -t -f NAME,TYPE connection show 2>/dev/null | while IFS= read -r l; do',
-        '  case "$l" in *:802-11-wireless)',
-        '    n=$(printf "%s" "${l%:802-11-wireless}" | sed \'s/\\\\:/:/g\')',
-        '    echo "K|$(nmcli -g 802-11-wireless.ssid connection show id "$n" 2>/dev/null)|$n";;',
+        'list=$(timeout 20 nmcli -t --escape yes -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan "$1" 2>&1)',
+        'rc=$?',
+        'if [ "$rc" -ne 0 ]; then printf "%s\\n" "$list" >&2; exit "$rc"; fi',
+        'printf "%s\\n" "$list" | sed "s/^/N|/"',
+        'nmcli -t --escape yes -f UUID,TYPE connection show 2>/dev/null | while IFS= read -r row; do',
+        '  case "$row" in *:802-11-wireless)',
+        '    uuid=${row%:*}',
+        '    ssid=$(nmcli -g 802-11-wireless.ssid connection show uuid "$uuid" 2>/dev/null)',
+        '    [ -n "$ssid" ] && printf "K|%s|%s\\n" "$ssid" "$uuid";;',
         '  esac',
         'done'
     ].join("\n")
 
     Process {
         id: scanProc
+        property string stderrText: ""
         stdout: StdioCollector {
             onStreamFinished: {
-                const known = {};
-                const found = {};
-                for (const line of text.split("\n")) {
-                    if (line.startsWith("K|")) {
-                        const p = line.slice(2).split("|");
-                        known[root.unesc(p[0])] = p.slice(1).join("|");
-                    }
+                const saved = {};
+                const aps = {};
+                const lines = text.split("\n");
+                for (const line of lines) {
+                    if (!line.startsWith("K|")) continue;
+                    const record = line.slice(2);
+                    const sep = record.lastIndexOf("|");
+                    if (sep < 0) continue;
+                    const name = record.slice(0, sep);
+                    const uuid = record.slice(sep + 1);
+                    if (name && uuid && !saved[name]) saved[name] = uuid;
                 }
-                for (const line of text.split("\n")) {
+                for (const line of lines) {
                     if (!line.startsWith("N|")) continue;
-                    const s = line.slice(2);
-                    const a = s.indexOf(":"), b = s.indexOf(":", a + 1), c = s.indexOf(":", b + 1);
-                    if (c < 0) continue;
-                    const ssid = root.unesc(s.slice(c + 1));
-                    if (ssid === "") continue;
-                    const security = s.slice(b + 1, c);
-                    const net = {
-                        ssid: ssid,
-                        signal: parseInt(s.slice(a + 1, b)) || 0,
-                        security: security === "" || security === "--" ? "open" : security,
-                        secure: security !== "" && security !== "--",
-                        active: s.slice(0, a).trim() === "*",
-                        known: known[ssid] !== undefined,
-                        profile: known[ssid] ?? ssid
+                    const f = root.fields(line.slice(2), ":");
+                    if (f.length < 4) continue;
+                    const name = f.slice(3).join(":");
+                    if (!name) continue;
+                    const sec = f[2];
+                    const item = {
+                        ssid: name,
+                        signal: parseInt(f[1]) || 0,
+                        security: !sec || sec === "--" ? "Open network" : sec,
+                        secure: !!sec && sec !== "--",
+                        active: f[0].trim() === "*",
+                        known: saved[name] !== undefined,
+                        uuid: saved[name] ?? ""
                     };
-                    const prev = found[ssid];
-                    if (!prev || net.active || (!prev.active && net.signal > prev.signal)) found[ssid] = net;
+                    if (!aps[name] || item.active || (!aps[name].active && item.signal > aps[name].signal))
+                        aps[name] = item;
                 }
-                root.networks = Object.values(found).sort((x, y) =>
-                    (y.active - x.active) || (y.known - x.known) || (y.signal - x.signal));
+                root.networks = Object.values(aps).sort((a, b) =>
+                    Number(b.active) - Number(a.active) || Number(b.known) - Number(a.known) || b.signal - a.signal);
             }
         }
-        onExited: root.scanning = false
+        stderr: StdioCollector { onStreamFinished: scanProc.stderrText = text.trim() }
+        onExited: (code, status) => {
+            root.scanning = false;
+            if (code !== 0) root.error = stderrText.split("\n").slice(-1)[0] || "Wi-Fi scan failed.";
+        }
     }
 
     Process {
         id: connectProc
-        property string outputText: ""
-        stdout: StdioCollector {
-            onStreamFinished: connectProc.outputText = text.trim()
-        }
-        stderr: StdioCollector {
-            onStreamFinished: {
-                const lines = text.trim().split("\n").filter(line => line.trim() !== "");
-                if (lines.length) root.error = lines[lines.length - 1].trim();
-            }
-        }
+        property string errorText: ""
+        stderr: StdioCollector { onStreamFinished: connectProc.errorText = text.trim() }
         onExited: (code, status) => {
-            const targetSsid = root.connectingSsid;
             root.connecting = "";
-            root.connectingSsid = "";
-            if (code !== 0 && root.error === "")
-                root.error = outputText || "Could not connect to “" + (targetSsid || "Wi-Fi") + "”. Check the password and try again.";
+            if (code !== 0) root.error = errorText.split("\n").slice(-1)[0] || "Could not connect to the selected network.";
             root.refresh();
             root.scan(false);
         }

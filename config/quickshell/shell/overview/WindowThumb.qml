@@ -13,9 +13,9 @@ Rectangle {
     required property var client
     required property Item overlay
 
-    signal dragStarted(var client)
+    signal dragStarted(var client, point pos)
     signal dragMoved(point pos)
-    signal dragEnded()
+    signal dragEnded(point pos)
 
     readonly property var toplevel: OverviewState.toplevelFor(client.address)
     readonly property string iconName: {
@@ -99,13 +99,17 @@ Rectangle {
             if (!(mouse.buttons & Qt.LeftButton)) return;
             if (!dragging && Math.hypot(mouse.x - start.x, mouse.y - start.y) > 8) {
                 dragging = true;
-                root.dragStarted(root.client);
+                root.dragStarted(root.client, mapToItem(root.overlay, mouse.x, mouse.y));
             }
             if (dragging) root.dragMoved(mapToItem(root.overlay, mouse.x, mouse.y));
         }
 
         onReleased: mouse => {
-            if (dragging) { dragging = false; root.dragEnded(); return; }
+            if (dragging) {
+                dragging = false;
+                root.dragEnded(mapToItem(root.overlay, mouse.x, mouse.y));
+                return;
+            }
             if (mouse.button === Qt.MiddleButton) OverviewState.closeWindow(root.client);
             else OverviewState.focusWindow(root.client);
         }

@@ -1,4 +1,4 @@
-// Clock in the bar: left-click opens the calendar, right-click opens clock tools.
+// Clock in the bar: left-click opens the calendar.
 //   wheel                    : handled by BarItem (time/date scrolling)
 
 import QtQuick
@@ -15,30 +15,22 @@ BarItem {
 
     label: Qt.formatDateTime(BarState.clock.date, format)
 
-    function openCal()  { calendar.visible = true; }
-    function closeCal() { calendar.visible = false; pinned = false; }
+    function openCal()  { calendar.open = true; }
+    function closeCal() { calendar.open = false; pinned = false; }
     function toggleCalendar() {
-        if (calendar.visible) closeCal();
+        if (calendar.open) closeCal();
         else { pinned = true; openCal(); }
     }
-
-    ClockToolsPopup {
-        id: toolsMenu
-        barWindow: root.barWindow
-        target: root
-    }
-
-    onRightClicked: toolsMenu.show()
 
     CalendarPopup {
         id: calendar
         barWindow: root.barWindow
         target: root
-        visible: false
+        open: false
 
         onDismissed: {
             pinned = false;
-            calendar.visible = false;
+            calendar.open = false;
         }
     }
 

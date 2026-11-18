@@ -2,7 +2,7 @@
 // Entry point. Run:        quickshell -p ~/.config/quickshell/shell
 // Toggle:                  quickshell -p ~/.config/quickshell/shell ipc call controlcenter toggle
 // Bar on/off:              quickshell -p ~/.config/quickshell/shell ipc call bar toggle
-// Change bar layout:       quickshell -p ~/.config/quickshell/shell ipc call bar layout cozy
+// Change bar layout:       quickshell -p ~/.config/quickshell/shell ipc call bar layout float
 
 import QtQuick
 import Quickshell
@@ -16,6 +16,9 @@ import qs.launcher
 import qs.dock
 import qs.desktop
 import qs.lock
+import qs.capture
+import qs.monitor
+import qs.sidebar
 
 ShellRoot {
     // Instantiate the kuro.toml watcher/generator for the whole session.
@@ -24,6 +27,32 @@ ShellRoot {
     Popups {}
     NotifCenter {}
     StylePicker { id: stylePicker }
+    SystemMonitor { id: systemMonitor }
+    SidebarWindow { id: sidebarWindow }
+
+    IpcHandler {
+        target: "sidebar"
+        function toggle(): void { sidebarWindow.toggle() }
+        function open(): void { sidebarWindow.open() }
+        function close(): void { sidebarWindow.close() }
+        function tab(index: int): void { sidebarWindow.selectTab(index === 1 ? 1 : 0) }
+        function animeMenu(prompt: string, inputPath: string, outputPath: string): string {
+            return sidebarWindow.requestAnimeMenu(prompt, inputPath, outputPath);
+        }
+    }
+
+    IpcHandler {
+        target: "monitor"
+        function open(): void { systemMonitor.openWindow() }
+        function toggle(): void { systemMonitor.toggle() }
+        function close(): void { systemMonitor.visible = false }
+    }
+
+    IpcHandler {
+        target: "stylepicker"
+        function wallpaper(): void { stylePicker.show("wallpaper") }
+        function theme(): void { stylePicker.show("theme") }
+    }
 
     Backdrop {
         onShowWallpaperPicker: stylePicker.show("wallpaper")
@@ -31,6 +60,14 @@ ShellRoot {
     }
 
     LockScreen { id: lockScreen }
+    CaptureOverlay { id: captureOverlay }
+
+    IpcHandler {
+        target: "capture"
+        function toggle(): void { captureOverlay.toggle() }
+        function open(): void { captureOverlay.open = true }
+        function close(): void { captureOverlay.open = false }
+    }
 
     IpcHandler {
         target: "lock"
@@ -44,7 +81,7 @@ ShellRoot {
     }
 
     Loader {
-        active: BarPopup.open
+        active: BarPopup.open || BarPopup.closing
         sourceComponent: ModulePopup {
             barWindow: BarPopup.barWindow
             target: BarPopup.target

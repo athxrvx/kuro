@@ -8,10 +8,11 @@ import qs.services
 
 Page {
     id: root
+    showScrollIndicator: false
 
     property string expanded: ""     // SSID whose action panel is open
 
-    onOpened: { Network.refresh(); Network.scan(false); }
+    onOpened: Network.refresh(true)
     onPoll: Network.refresh()
 
     // Rescan periodically while the page is open

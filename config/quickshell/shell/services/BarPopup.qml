@@ -8,11 +8,14 @@ Singleton {
     id: root
 
     property bool open: false
+    property bool closing: false
     property string kind: ""
     property var target: null
     property var barWindow: null
 
     function show(kind, target, barWindow) {
+        closeTimer.stop();
+        root.closing = false;
         root.kind = kind;
         root.target = target;
         root.barWindow = barWindow;
@@ -28,9 +31,20 @@ Singleton {
     }
 
     function close() {
+        if (!root.open && root.closing) return;
         root.open = false;
-        root.kind = "";
-        root.target = null;
-        root.barWindow = null;
+        root.closing = true;
+        closeTimer.restart();
+    }
+
+    Timer {
+        id: closeTimer
+        interval: 210
+        onTriggered: {
+            root.closing = false;
+            root.kind = "";
+            root.target = null;
+            root.barWindow = null;
+        }
     }
 }

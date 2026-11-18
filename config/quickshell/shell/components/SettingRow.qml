@@ -20,7 +20,7 @@ RowLayout {
         visible: root.icon !== ""
         text: root.icon
         color: Theme.subtext
-        font.family: Theme.font
+        font.family: Theme.iconFont
         font.pixelSize: Theme.iconSize
     }
 

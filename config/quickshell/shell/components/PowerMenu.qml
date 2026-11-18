@@ -6,7 +6,7 @@ import QtQuick.Layouts
 import Quickshell
 import qs.config
 
-ColumnLayout {
+RowLayout {
     id: root
 
     signal actionTriggered()
@@ -59,7 +59,7 @@ ColumnLayout {
     }
 
     Layout.fillWidth: true
-    spacing: 2
+    spacing: 8
 
     Repeater {
         model: root.actions
@@ -71,8 +71,9 @@ ColumnLayout {
             readonly property bool armed: root.pending === index
 
             Layout.fillWidth: true
-            implicitHeight: 38
-            radius: Theme.radiusSmall
+            Layout.minimumWidth: 64
+            implicitHeight: 82
+            radius: 0
             color: armed ? Theme.danger
                  : mouse.containsMouse ? Theme.surface : "transparent"
             Behavior on color { ColorAnimation { duration: 120 } }
@@ -92,17 +93,18 @@ ColumnLayout {
                 Behavior on width { NumberAnimation { duration: 1000 } }
             }
 
-            RowLayout {
+            ColumnLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 12
+                anchors.margins: 7
+                spacing: 4
 
                 Text {
+                    Layout.fillWidth: true
                     text: row.modelData.icon
                     color: row.fg
-                    font.family: Theme.font
-                    font.pixelSize: Theme.iconSize
+                    font.family: Theme.iconFont
+                    font.pixelSize: Theme.iconSize + 2
+                    horizontalAlignment: Text.AlignHCenter
                 }
                 Text {
                     Layout.fillWidth: true
@@ -110,14 +112,18 @@ ColumnLayout {
                                     : row.modelData.label
                     color: row.fg
                     font.family: Theme.font
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: 11
                     font.bold: row.armed
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
                 }
                 Text {
-                    text: row.armed ? root.remaining + "s · esc to cancel" : row.modelData.hint
+                    Layout.fillWidth: true
+                    text: row.armed ? root.remaining + "s · Esc" : row.modelData.hint
                     color: row.armed ? row.fg : Theme.muted
                     font.family: Theme.font
-                    font.pixelSize: 12
+                    font.pixelSize: 9
+                    horizontalAlignment: Text.AlignHCenter
                 }
             }
 

@@ -38,9 +38,8 @@ Singleton {
     property string wallpaperDir: home + "/Pictures/Wallpaper"
 
     // Backend: called when a thumbnail is clicked. "$1" = image path.
-    // wallset-backend handles awww + pywal + kitty/waybar/etc.
-    // Full path: Hyprland's exec-once doesn't always have ~/.local/bin in PATH.
-    readonly property string wallpaperSet: home + "/.local/bin/wallset-backend \"$1\""
+    // Apply directly through the running awww daemon.
+    readonly property string wallpaperSet: "awww img --transition-type grow --transition-pos center --transition-duration 1.1 --transition-fps 60 \"$1\""
 
     // Backend output is written here (not to Quickshell), so processes
     // restarted by the backend (e.g. waybar) aren't tied to Quickshell.
@@ -48,7 +47,7 @@ Singleton {
 
     // Frontend: your picker, opened via the "Open picker" button (Control Center is closed too).
     // Same as the SUPER+K binding. Old rofi picker: home + "/.local/bin/wallset"
-    property string wallpaperPicker: "quickshell -c hyprquickpaper"
+    property string wallpaperPicker: "qs -c shell ipc call stylepicker wallpaper"
 
     // App defaults from kuro.toml (overridden by theme.json when present).
     property string fileManager: "dolphin"
@@ -62,7 +61,7 @@ Singleton {
     readonly property string notifPosition: "top-right"     // "top-right" | "bottom-right"
     readonly property int notifTimeout: 6000                 // ms, 0 = never auto-dismiss
     readonly property int notifMaxPopups: 4
-    readonly property int notifWidth: 360
+    readonly property int notifWidth: 440
     readonly property string notifStateFile: home + "/.cache/quickshell/notif-dnd"
 
     // Calendar todos are stored here (JSON) so they survive a restart
@@ -82,7 +81,7 @@ Singleton {
     // can still be shown via: quickshell -p ~/.config/quickshell/shell ipc call bar toggle
     readonly property bool barEnabled: true
     // Initial layout if none has been chosen yet (see bar/BarState.qml)
-    readonly property string barLayout: "omarchy"
+    readonly property string barLayout: "full"
     // The last selected layout is stored here
     readonly property string barStateFile: home + "/.cache/quickshell/bar-layout"
 
@@ -130,12 +129,15 @@ Singleton {
     // Terminal used by the launcher for package, container and system actions.
     // Commands are passed as a single `sh -c` argument, so no shell quoting is needed.
     property var terminal: ["kitty", "-e"]
+    // Centered floating terminal for interactive launcher actions.
+    readonly property var popupTerminal: ["kitty", "--class", "omarchy-launcher-tui", "-e"]
     // Floating centered kitty for fzf menus (see the launcher-tui Hyprland rule).
     // FZPAC_FINDER is absolute so fzpac finds fzf without depending on PATH.
     readonly property var tuiTerminal: ["env", "FZPAC_FINDER=" + home + "/.local/bin/fzf", "kitty",
                                         "--class", "omarchy-launcher-tui", "-e"]
     readonly property string fzpac: home + "/.config/quickshell/shell/bin/fzpac"
     readonly property string captureScript: home + "/.config/quickshell/shell/bin/capture"
+    readonly property string containerStopScript: home + "/.config/quickshell/shell/bin/container-stop"
     readonly property string captureStateFile: home + "/.cache/quickshell/gpu-screen-recorder.pid"
 
     // readonly property string externalMode: "1920x1080@60"

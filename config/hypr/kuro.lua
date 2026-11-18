@@ -5,12 +5,12 @@
 kuro = {
     apps = {
         terminal    = "kitty",
-        fileManager = "dolphin",
+        fileManager = "flea",
         menu        = "hyprlauncher",
     },
     fonts = {
         ui       = "JetBrainsMono Nerd Font",
-        uiSize   = 15,
+        uiSize   = 16,
         iconSize = 20,
         terminal = "JetBrainsMono Nerd Font",
         terminalSize = 11.5,
@@ -41,7 +41,7 @@ hl.config({
     },
 
     decoration = {
-        rounding = 1,
+        rounding = 0,
         rounding_power = 2,
         active_opacity = 1.0,
         inactive_opacity = 1.0,
@@ -52,7 +52,7 @@ hl.config({
             color = 0x990d0d0d,
         },
         blur = {
-            enabled = true,
+            enabled = false,
             size = 3,
             passes = 1,
             vibrancy = 0.1696,
@@ -75,7 +75,7 @@ hl.config({
         follow_mouse = 1,
         mouse_refocus = false,
         sensitivity = 0,
-        touchpad = { natural_scroll = false },
+        touchpad = { natural_scroll = true },
     },
 
     animations = { enabled = true },

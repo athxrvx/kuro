@@ -349,7 +349,7 @@ Scope {
                         IslandText {
                             visible: !notifIcon.visible
                             text: Icons.bell
-                            font.family: Theme.font
+                            font.family: Theme.iconFont
                             font.pixelSize: 17
                         }
                         IslandText {
@@ -506,7 +506,7 @@ Scope {
             visible: art.status !== Image.Ready
             text: String.fromCodePoint(0xF075A)
             color: Theme.muted
-            font.family: Theme.font
+            font.family: Theme.iconFont
             font.pixelSize: cover.size * 0.5
         }
         Image {
@@ -580,7 +580,7 @@ Scope {
         signal activated()
         text: icon
         color: enabled ? IslandStyle.fg : IslandStyle.faint
-        font.family: Theme.font
+        font.family: Theme.iconFont
         font.pixelSize: 28
         MouseArea {
             anchors.fill: parent

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'USAGE'
+Usage: ./installer-deps [--dry-run]
+
+Installs the Arch packages used by this Hyprland, Quickshell, Kitty, and Zsh
+setup. A full system upgrade is included to avoid partial upgrades.
+USAGE
+}
+
+dry_run=0
+case "${1:-}" in
+    "") ;;
+    --dry-run) dry_run=1 ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
+
+if [[ ! -f /etc/arch-release ]] || ! command -v pacman >/dev/null 2>&1; then
+    echo 'This dependency installer supports Arch Linux only.' >&2
+    exit 1
+fi
+
+packages=(
+    hyprland hypridle quickshell kitty neovim
+    networkmanager bluez bluez-utils pipewire pipewire-alsa pipewire-pulse wireplumber
+    cliphist wl-clipboard playerctl rofi
+    brightnessctl hyprsunset grim slurp hyprpicker gpu-screen-recorder
+    upower power-profiles-daemon libnotify dconf jq curl python git
+    zsh zsh-completions zsh-autosuggestions zsh-syntax-highlighting
+    fzf zoxide fd ripgrep bat eza
+    distrobox podman mpv btop htop fastfetch
+    awww papirus-icon-theme ttf-fira-sans
+    ttf-jetbrains-mono-nerd ttf-cascadia-code-nerd ttf-firacode-nerd ttf-iosevka-nerd
+    noto-fonts noto-fonts-cjk
+)
+
+echo 'Packages to install:'
+printf '  %s\n' "${packages[@]}"
+echo
+if (( dry_run )); then
+    echo 'Dry run only; no packages were installed.'
+    exit 0
+fi
+
+read -r -p 'Continue with pacman -Syu --needed? [y/N] ' answer
+case "$answer" in
+    y|Y|yes|YES) ;;
+    *) echo 'Cancelled.'; exit 0 ;;
+esac
+
+if (( EUID == 0 )); then
+    pacman -Syu --needed -- "${packages[@]}"
+else
+    command -v sudo >/dev/null 2>&1 || { echo 'Install sudo or run this script as root.' >&2; exit 1; }
+    sudo pacman -Syu --needed -- "${packages[@]}"
+fi

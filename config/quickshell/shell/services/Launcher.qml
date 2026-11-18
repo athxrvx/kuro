@@ -36,17 +36,21 @@ Singleton {
         sound: "dev-sound",
         display: "dev-display",
         appearance: "style-appearance",
-        wallpaper: "style-wallpapers",
         fonts: "style-fonts",
-        themes: "style-themes",
         lockscreen: "style-lockscreen",
         clipboard: "sys-clipboard",
         notifications: "sys-notifications",
-        power: "sys-power",
+        power: "power",
         keybinds: "sys-keybinds"
     })
 
     function openNamed(name) {
+        if (name === "wallpaper" || name === "themes") {
+            open = false;
+            Quickshell.execDetached(["qs", "-c", "shell", "ipc", "call", "stylepicker",
+                                     name === "wallpaper" ? "wallpaper" : "theme"]);
+            return;
+        }
         const id = pageSections[name] ?? name;
         open = true;
         drilled = false;
@@ -122,11 +126,7 @@ Singleton {
         running: root.open
         onTriggered: {
             root.liveTick++;
-            if (root.section === "dev-profile") {
-                SystemStats.refresh();
-                SystemInfo.refresh();
-                Battery.refresh();
-            } else if (root.section === "dev-sound") {
+            if (root.section === "dev-sound") {
                 Audio.refresh();
             } else if (root.section === "dev-network") {
                 Network.refresh();
@@ -214,6 +214,21 @@ Singleton {
     // ── Containers: discover Distrobox environments and their GUI apps ─
     property var containers: []
     property var containerApps: []
+
+    function stopContainer(name) {
+        if (containerStopProc.running) return;
+        const safeName = String(name).replace(/[^A-Za-z0-9._-]/g, "_");
+        containerStopName = String(name);
+        const log = Config.home + "/.cache/quickshell/container-logs/" + safeName + "-stop.log";
+        containerStopProc.command = [Config.containerStopScript, containerStopName, log];
+        containerStopProc.running = true;
+    }
+
+    Process {
+        id: containerStopProc
+        onExited: root.refreshContainers()
+    }
+    property string containerStopName: ""
 
     function refreshContainers() {
         containerProc.command = ["sh", "-c",
@@ -309,6 +324,43 @@ Singleton {
 
     function shq(s) { return "'" + String(s ?? "").replace(/'/g, "'\\''") + "'"; }
 
+    function containerShellCommand(name) {
+        const markerName = String(name).replace(/[^A-Za-z0-9._-]/g, "_");
+        const script = [
+            'marker="$HOME/.cache/quickshell/distrobox-zsh/' + markerName + '.done"',
+            'mkdir -p "$(dirname "$marker")"',
+            'if [ ! -e "$marker" ]; then',
+            '  as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; elif command -v sudo >/dev/null 2>&1; then sudo "$@"; elif command -v doas >/dev/null 2>&1; then doas "$@"; else return 1; fi; }',
+            '  if ! command -v zsh >/dev/null 2>&1; then',
+            '    if command -v apt-get >/dev/null 2>&1; then as_root apt-get update && as_root apt-get install -y zsh',
+            '    elif command -v dnf >/dev/null 2>&1; then as_root dnf install -y zsh',
+            '    elif command -v pacman >/dev/null 2>&1; then as_root pacman -S --noconfirm zsh',
+            '    elif command -v zypper >/dev/null 2>&1; then as_root zypper --non-interactive install zsh',
+            '    elif command -v apk >/dev/null 2>&1; then as_root apk add zsh',
+            '    else echo "No supported package manager found to install zsh." >&2; fi',
+            '  fi',
+            '  if command -v zsh >/dev/null 2>&1; then',
+            '    zsh_path=$(command -v zsh); user=${USER:-$(id -un)}',
+            '    if command -v usermod >/dev/null 2>&1; then as_root usermod -s "$zsh_path" "$user" || { command -v chsh >/dev/null 2>&1 && chsh -s "$zsh_path" "$user"; }',
+            '    elif command -v chsh >/dev/null 2>&1; then chsh -s "$zsh_path" "$user"',
+            '    fi',
+            '    login_shell=$(getent passwd "$user" 2>/dev/null | cut -d: -f7)',
+            '    [ -n "$login_shell" ] || login_shell=$(awk -F: -v user="$user" \'$1 == user {print $7; exit}\' /etc/passwd)',
+            '    [ "$login_shell" = "$zsh_path" ] && touch "$marker"',
+            '  fi',
+            'fi',
+            'if command -v zsh >/dev/null 2>&1; then exec zsh -l; fi',
+            'echo "zsh is unavailable; opening bash instead." >&2',
+            'exec bash -l'
+        ].join("\n");
+        return "distrobox enter " + shq(name) + " -- sh -lc " + shq(script);
+    }
+
+    function containerUpdateCommand(name) {
+        const script = 'exec "$HOME/.config/quickshell/shell/bin/container-update"';
+        return "distrobox enter " + shq(name) + " -- bash -lc " + shq(script);
+    }
+
     // ── Fuzzy scoring ────────────────────────────────────────────────
     // 0 = no match. Higher is better: exact > prefix > word start > substring > in-order letters.
     function score(hay, q) {
@@ -376,7 +428,7 @@ Singleton {
     // ── Dynamic section items ────────────────────────────────────────
     function appItems() {
         return DesktopEntries.applications.values
-            .filter(a => !a.noDisplay)
+            .filter(a => !a.noDisplay && !(String(a.id).toLowerCase().replace(".desktop", "") === "com.thisisgm.flea" || String(a.name).toLowerCase() === "flea"))
             .map(a => ({
                 id: "app:" + a.id,
                 title: a.name,
@@ -390,46 +442,67 @@ Singleton {
             }));
     }
 
-    function containerItems() {
+    function containerItems(grouped = true) {
         const out = [];
         const icon = Icons.g(0xF4B7);                       // oct-container
         for (const c of containers) {
             const image = (c.image.split("/").pop() ?? "").split(":")[0];
             const status = c.running ? "Running" : "Stopped";
+            if (!grouped) {
+                out.push({
+                    id: "box:" + c.name,
+                    title: c.name,
+                    sub: status + (image ? "  ·  " + image : ""),
+                    glyph: icon,
+                    keys: c.name + " " + c.image + " distrobox podman " + status,
+                    hint: "enter",
+                    run: { type: "terminal", cmd: containerShellCommand(c.name) }
+                });
+                continue;
+            }
+            const restart = c.running
+                ? ["sh", "-c", "distrobox stop " + shq(c.name) + " && distrobox enter " + shq(c.name) + " -- true"]
+                : ["distrobox", "enter", c.name, "--", "true"];
+            const actions = [
+                { title: "Restart", enabled: true,
+                  run: { type: "cmd", cmd: restart } },
+                { title: "Stop", enabled: c.running,
+                  run: { type: "containerStop", name: c.name } },
+                { title: "Update", enabled: true,
+                  run: { type: "popupTerminal", cmd: containerUpdateCommand(c.name) } }
+            ];
+            const cardHeight = 52 + 60;
             out.push({
                 id: "box:" + c.name,
                 title: c.name,
-                sub: status + "  ·  " + image + "  ·  container environment",
+                sub: status + (image ? "  ·  " + image : ""),
                 glyph: icon, keys: c.name + " " + c.image + " distrobox podman " + status,
-                hint: c.running ? "running" : "stopped",
-                run: { type: "terminal", cmd: "distrobox enter " + shq(c.name) + "; exec bash" }
+                hint: "enter",
+                containerHeader: true,
+                containerCardMember: true,
+                containerCardHeight: cardHeight,
+                rowHeight: 52,
+                run: { type: "terminal", cmd: containerShellCommand(c.name) }
             });
             out.push({
-                title: c.running ? "Stop " + c.name : "Start " + c.name,
-                sub: "Distrobox  ·  " + c.name,
-                glyph: c.running ? Icons.g(0xF0709) : Icons.g(0xF0416),
-                keys: "start stop " + c.name + " container",
-                hint: c.running ? "stop" : "start",
-                run: { type: "cmd", cmd: ["distrobox", c.running ? "stop" : "start", c.name] }
-            });
-            out.push({
-                title: "Delete " + c.name,
-                sub: "Distrobox  ·  removes the container and its data",
-                glyph: Icons.trash, keys: "delete remove destroy " + c.name,
-                hint: "danger", danger: true,
-                run: { type: "terminal", cmd: "distrobox rm " + shq(c.name) + "; exec bash" }
+                id: "boxActions:" + c.name,
+                title: c.name + " actions",
+                sub: "Restart, stop or update " + c.name,
+                keys: "restart stop start update upgrade " + c.name + " container",
+                containerCardMember: true,
+                containerActionStrip: true,
+                containerActions: actions,
+                rowHeight: 68,
+                run: actions[0].run
             });
         }
-        for (const a of containerApps) {
-            out.push({
-                title: a.name,
-                sub: a.container + "  ·  " + a.file,
-                glyph: Icons.g(0xF003B),
-                keys: a.name + " " + a.container + " gui app container",
-                hint: "container app",
-                run: { type: "cmd", cmd: ["distrobox", "enter", a.container, "--", a.exec] }
+        if (grouped) out.push({
+                id: "boxOtherOptions",
+                title: "Other options",
+                keys: "container options list create prune help",
+                containerOptionsLabel: true,
+                rowHeight: 32
             });
-        }
         return out;
     }
 
@@ -448,6 +521,7 @@ Singleton {
     // singleton so this engine stays small.
     function liveItems(id) {
         switch (id) {
+        case "control":          return LauncherControls.controlItems();
         case "dev-profile":      return LauncherControls.profileItems();
         case "dev-network":      return LauncherControls.networkItems();
         case "dev-bluetooth":    return LauncherControls.bluetoothItems();
@@ -456,9 +530,14 @@ Singleton {
         case "sys-notifications": return LauncherControls.notificationItems();
         case "sys-clipboard":    return LauncherControls.clipboardItems();
         case "sys-keybinds":     return LauncherControls.keybindItems();
-        case "sys-power":        return LauncherControls.powerItems();
+        case "power":            return LauncherControls.powerItems();
         case "style-appearance": return LauncherControls.appearanceItems();
-        case "style-wallpapers": return LauncherControls.wallpaperItems();
+        case "appearance-opacity": return LauncherControls.opacityItems();
+        case "appearance-border": return LauncherControls.borderItems();
+        case "appearance-panels": return LauncherControls.panelItems();
+        case "appearance-dock-settings": return LauncherControls.dockSettingItems();
+        case "appearance-panel-settings": return LauncherControls.panelSettingItems();
+        case "appearance-animations": return LauncherControls.animationItems();
         default: return [];
         }
     }
@@ -476,12 +555,12 @@ Singleton {
     }
 
     // ── Section search ───────────────────────────────────────────────
-    function sectionResults(id, q) {
+    function sectionResults(id, q, flattenContainers = false) {
         const sec = sections.find(s => s.id === id);
         if (!sec) return [];
         let items = sec.items.slice();
         if (id === "apps") items = appItems().concat(items);
-        if (id === "containers") items = containerItems().concat(items);
+        if (id === "containers") items = containerItems(!flattenContainers).concat(items);
         if (id === "appearance") items = items.concat(barLayoutItems());
         items = liveItems(id).concat(items);
 
@@ -508,6 +587,13 @@ Singleton {
                 control: it.control ?? "",
                 active: it.active === true,
                 keepOpen: it.keepOpen === true,
+                containerHeader: it.containerHeader === true,
+                containerCardMember: it.containerCardMember === true,
+                containerCardHeight: it.containerCardHeight ?? 0,
+                containerActionStrip: it.containerActionStrip === true,
+                containerActions: it.containerActions ?? [],
+                containerOptionsLabel: it.containerOptionsLabel === true,
+                rowHeight: it.rowHeight ?? 50,
                 adjust: typeof it.adjust === "function" ? it.adjust : null,
                 run: it.run
             });
@@ -530,14 +616,16 @@ Singleton {
                        score: 1000, run: { type: "copy", text: String(v) } });
 
         for (const sec of sections) {
-            for (const r of sectionResults(sec.id, q)) {
+            for (const r of sectionResults(sec.id, q, sec.id === "containers")) {
                 r.score *= 0.92;                 // section-local matches win when browsing
                 out.push(r);
             }
         }
         for (const a of actions) {
             const s = Math.max(score(a.name, q), score(a.keys, q) * 0.8);
-            if (s > 0) out.push({ kind: "power", title: a.name,
+            const alreadyListed = out.some(r => r.title.toLowerCase() === a.name.toLowerCase()
+                && r.run?.type === "cmd" && JSON.stringify(r.run.cmd) === JSON.stringify(a.cmd));
+            if (s > 0 && !alreadyListed) out.push({ kind: "power", title: a.name,
                                   sub: a.danger ? "Press Enter twice to confirm" : "Session",
                                   glyph: a.icon, hint: "power", danger: a.danger, section: "Session",
                                   score: s * 0.85, run: { type: "cmd", cmd: a.cmd } });
@@ -557,7 +645,12 @@ Singleton {
         void liveTick;                   // keep live controls reactive
 
         if (q.startsWith(":clip")) return clipResults(text.slice(5).trim().toLowerCase());
-        if (q.startsWith(":wall")) return wallResults(text.slice(5).trim().toLowerCase());
+        if (q.startsWith(":wall")) return [{
+            kind: "wall", section: "Wallpapers", title: "Open wallpaper picker",
+            sub: "Choose a wallpaper in the full-screen picker",
+            glyph: Icons.image, hint: "picker",
+            run: { type: "stylePicker", mode: "wallpaper" }
+        }];
         if (q.startsWith(":file")) return fileResults();
         if (q.startsWith(":win"))  return windowResults(text.slice(4).trim().toLowerCase());
         if (text.startsWith(">")) {
@@ -626,17 +719,6 @@ Singleton {
             }));
     }
 
-    function wallResults(q) {
-        return Wallpaper.images
-            .filter(p => q === "" || Wallpaper.fileName(p).toLowerCase().includes(q))
-            .slice(0, 40)
-            .map(p => ({
-                kind: "wall", section: "Wallpapers", title: Wallpaper.fileName(p),
-                sub: p.replace(Config.home, "~"), icon: "file://" + p, glyph: Icons.image, hint: "wall",
-                run: { type: "wall", path: p }
-            }));
-    }
-
     // ── Run ──────────────────────────────────────────────────────────
     signal pageRequested(string name)
 
@@ -646,9 +728,6 @@ Singleton {
         // Navigating into a section is not an action: keep the launcher open.
         if (x.type === "enterSection") { enterSection(x.id); return; }
         if (x.type === "section") { enterSection(x.section); return; }
-
-        // Switching colorscheme stays open so the list can be browsed.
-        if (x.type === "kuroScheme") { Kuro.setScheme(x.name); return; }
 
         switch (x.type) {
         case "app":
@@ -666,12 +745,21 @@ Singleton {
         case "cmd":
             Quickshell.execDetached(x.cmd);
             break;
+        case "containerStop":
+            stopContainer(x.name);
+            break;
         case "shell":
             rememberRun(x.cmd);
             Quickshell.execDetached(["sh", "-c", x.cmd]);
             break;
         case "terminal":
             Quickshell.execDetached(Config.terminal.concat(["sh", "-c", x.cmd]));
+            break;
+        case "popupTerminal":
+            Quickshell.execDetached(Config.popupTerminal.concat(["sh", "-c", x.cmd]));
+            break;
+        case "stylePicker":
+            Quickshell.execDetached(["qs", "-c", "shell", "ipc", "call", "stylepicker", x.mode]);
             break;
         case "tui":
             // fzpac runs in a floating, centered kitty and closes when done.
@@ -682,10 +770,6 @@ Singleton {
             break;
         case "hyprToggle":
             Hypr.set(x.key, !Hypr[x.key]);
-            break;
-        case "wallRandom":
-            if (Wallpaper.images.length)
-                Wallpaper.set(Wallpaper.images[Math.floor(Math.random() * Wallpaper.images.length)]);
             break;
         case "barNext":
             BarState.next();
@@ -715,9 +799,6 @@ Singleton {
             break;
         case "clip":
             Clipboard.copy(x.item);
-            break;
-        case "wall":
-            Wallpaper.set(x.path);
             break;
         }
         if (r.keepOpen !== true) open = false;

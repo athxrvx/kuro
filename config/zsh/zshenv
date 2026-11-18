@@ -1,0 +1,17 @@
+
+# Kuro Zsh environment. This file is meant to be sourced by ~/.zshenv.
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+export ZSH_CONFIG_HOME="$XDG_CONFIG_HOME/zsh"
+export ZSH_CACHE_DIR="$ZSH_CONFIG_HOME/cache"
+# Keep Kuro tools first while retaining a usable Arch system PATH even when
+# the login environment starts with PATH unset or incomplete.
+typeset -U path PATH
+path=("$ZSH_CONFIG_HOME/bin" "$HOME/.config/quickshell/shell/bin" "${path[@]}" \
+  /usr/local/sbin /usr/local/bin /usr/bin /usr/sbin /bin /sbin)
+export PATH
+[[ -d "$ZSH_CACHE_DIR" ]] || mkdir -p "$ZSH_CACHE_DIR" 2>/dev/null
+
+# Zsh History Configuration
+export HISTFILE="$ZSH_CACHE_DIR/zsh_history"
+export HISTSIZE=10000
+export SAVEHIST=10000

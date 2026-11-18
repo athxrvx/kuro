@@ -14,10 +14,11 @@ PopupWindow {
 
     required property var barWindow
     required property Item target
+    readonly property bool requestedOpen: BarPopup.open && BarPopup.kind !== ""
 
     readonly property string title: ({
         network: "Network", volume: "Sound", mic: "Microphone",
-        brightness: "Brightness", battery: "Battery", power: "Power",
+        brightness: "Brightness", battery: "Battery",
         memory: "Memory", profile: "Power profile", bluetooth: "Bluetooth",
         clipboard: "Clipboard", mouse: "Mouse", window: "Window", tray: "System tray"
     })[BarPopup.kind] ?? BarPopup.kind
@@ -25,14 +26,16 @@ PopupWindow {
     function place() {
         const p = target.mapToItem(null, target.width / 2, target.height);
         const x = Math.round(p.x - implicitWidth / 2);
-        anchor.rect.x = Math.max(4, Math.min(x, barWindow.width - implicitWidth - 4));
+        const edge = Theme.popupGap;
+        const maxX = Math.max(edge, barWindow.width - implicitWidth - edge);
+        anchor.rect.x = Math.max(edge, Math.min(x, maxX));
         anchor.rect.y = Math.round(p.y + Theme.popupGap);
     }
 
     function componentFor(kind) {
         return ({
             network: networkC, volume: volumeC, mic: micC,
-            brightness: brightnessC, battery: batteryC, power: powerC,
+            brightness: brightnessC, battery: batteryC,
             memory: memoryC, profile: profileC, bluetooth: bluetoothC,
             clipboard: clipboardC, mouse: mouseC, window: windowC, tray: trayC
         })[kind] ?? null;
@@ -40,13 +43,13 @@ PopupWindow {
 
     function refresh() {
         switch (BarPopup.kind) {
-            case "network":    Network.refresh(); Network.scan(false); break;
+            case "network":    Network.refresh(true); break;
             case "volume":
             case "mic":        Audio.refresh(); break;
             case "brightness": Brightness.refresh(); break;
-            case "battery":    Battery.refresh(); break;
+            case "battery":    Battery.refresh(); PowerProfile.refresh(); GpuStatus.refresh(); break;
             case "memory":     SystemStats.refresh(); break;
-            case "profile":    PowerProfile.refresh(); break;
+            case "profile":    PowerProfile.refresh(); GpuStatus.refresh(); break;
             case "bluetooth":  Bluetooth.refresh(); break;
             case "clipboard":  Clipboard.refresh(); break;
             case "mouse":      MouseBattery.refresh(); break;
@@ -54,25 +57,42 @@ PopupWindow {
     }
 
     anchor.window: barWindow
-    visible: BarPopup.open && BarPopup.kind !== ""
-    implicitWidth: 320
+    visible: popup.requestedOpen || popupSurface.opacity > 0
+    implicitWidth: Math.min(320, Math.max(1, barWindow.width - Theme.popupGap * 2))
     implicitHeight: Math.min(480, body.implicitHeight + 24)
     color: "transparent"
 
-    onVisibleChanged: if (visible) { place(); refresh(); }
+    onVisibleChanged: if (visible && popup.requestedOpen) { place(); refresh(); }
+
+    Connections {
+        target: BarPopup
+        function onKindChanged() {
+            if (popup.requestedOpen) { popup.place(); popup.refresh(); }
+        }
+        function onTargetChanged() {
+            if (popup.requestedOpen) popup.place();
+        }
+    }
 
     HyprlandFocusGrab {
         windows: [popup]
-        active: popup.visible && BarPopup.kind !== "tray"
+        active: popup.requestedOpen && popup.visible && BarPopup.kind !== "tray"
         onCleared: BarPopup.close()
     }
 
     Rectangle {
+        id: popupSurface
         anchors.fill: parent
         radius: 0
         color: Theme.bg
         border.color: Theme.border
         clip: true
+        opacity: popup.requestedOpen ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        transform: Translate {
+            y: popup.requestedOpen ? 0 : -8
+            Behavior on y { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        }
 
         Flickable {
             id: flick
@@ -124,7 +144,7 @@ PopupWindow {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: 4
-                visible: flick.contentHeight > flick.height
+                visible: flick.contentHeight > flick.height && BarPopup.kind !== "network"
                 color: "transparent"
 
                 Rectangle {
@@ -143,95 +163,258 @@ PopupWindow {
         id: networkC
         ColumnLayout {
             id: networkBody
-            property string expanded: ""
-            spacing: 8
+            property string selectedSsid: ""
+            spacing: 10
 
-            ListRow { radius: 0;
-                icon: Network.ethConnected ? Icons.ethernet : Icons.wifi
-                title: Network.ethConnected ? "Ethernet" : (Network.ssid || "Wi-Fi")
-                sub: Network.ethConnected ? Network.ethIp : (Network.wifiIp || "Not connected")
-                trailing: Network.online ? "on" : "off"
-                active: true
-                interactive: false
+            // Connection summary and radio controls
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: summary.implicitHeight + 20
+                color: Theme.surface
+                border.color: Theme.border
+                radius: Theme.radiusSmall
+
+                RowLayout {
+                    id: summary
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 10
+
+                    Text {
+                        text: Network.ethConnected ? Icons.ethernet : (Network.enabled ? Icons.wifi : Icons.wifiOff)
+                        color: Network.online ? Theme.accent : Theme.muted
+                        font.family: Theme.iconFont
+                        font.pixelSize: 22
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            Layout.fillWidth: true
+                            text: Network.ethConnected ? "Ethernet connected" : Network.ssid || "Wi-Fi disconnected"
+                            color: Theme.text
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontSize
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: Network.ethConnected ? [Network.ethIp, Network.ethSpeed].filter(Boolean).join(" · ")
+                                : !Network.enabled ? "Wireless radio is off"
+                                : Network.ssid ? (Network.wifiIp || "Connected") : "Choose a network below"
+                            color: Theme.muted
+                            font.family: Theme.font
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Text {
+                        text: Network.busy ? "…" : Network.online ? Icons.check : ""
+                        color: Theme.accent
+                        font.family: Theme.iconFont
+                        font.pixelSize: 16
+                    }
+                }
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                TextButton { radius: 0;
-                    text: Network.enabled ? Icons.wifi + "  Disable Wi-Fi" : Icons.wifiOff + "  Enable Wi-Fi"
+                spacing: 8
+                TextButton {
+                    Layout.fillWidth: true
+                    text: Network.busy ? "Updating…" : Network.enabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
+                    enabled: !Network.busy
+                    primary: !Network.enabled
                     onClicked: Network.toggle()
                 }
-                Item { Layout.fillWidth: true }
-                TextButton { radius: 0; text: Icons.refresh; onClicked: Network.scan(true) }
+                TextButton {
+                    text: Network.scanning ? "Scanning…" : Icons.refresh + "  Rescan"
+                    enabled: Network.enabled && !Network.scanning && !Network.busy
+                    onClicked: Network.scan(true)
+                }
             }
 
-            Text {
+            Rectangle {
                 Layout.fillWidth: true
-                visible: text !== ""
-                text: Network.error
-                color: Theme.danger
-                font.family: Theme.font
-                font.pixelSize: 12
-                wrapMode: Text.Wrap
+                implicitHeight: errorLabel.implicitHeight + 14
+                visible: Network.error !== ""
+                color: Theme.surface
+                border.color: Theme.danger
+                radius: Theme.radiusSmall
+                Text {
+                    id: errorLabel
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    text: Network.error
+                    color: Theme.danger
+                    font.family: Theme.font
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                }
             }
 
-            Text {
+            RowLayout {
                 Layout.fillWidth: true
-                visible: Network.enabled && Network.networks.length === 0
-                text: Network.scanning ? "Scanning for Wi-Fi networks…" : "No networks found. Try scanning again."
-                color: Theme.muted
-                font.family: Theme.font
-                font.pixelSize: 12
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
+                visible: Network.enabled
+                Text {
+                    Layout.fillWidth: true
+                    text: "NETWORKS"
+                    color: Theme.muted
+                    font.family: Theme.font
+                    font.pixelSize: 10
+                    font.letterSpacing: 1.2
+                }
+                Text {
+                    text: Network.scanning ? "Searching nearby…" : Network.networks.length + " found"
+                    color: Theme.muted
+                    font.family: Theme.font
+                    font.pixelSize: 10
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                visible: !Network.enabled || (!Network.scanning && Network.networks.length === 0)
+                    || (Network.scanning && Network.networks.length === 0)
+                implicitHeight: emptyState.implicitHeight + 28
+                color: "transparent"
+                border.color: Theme.border
+                radius: Theme.radiusSmall
+                Text {
+                    id: emptyState
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    text: !Network.enabled ? "Turn Wi-Fi on to find nearby networks."
+                        : Network.scanning ? "Scanning for nearby networks…"
+                        : "No networks found. Rescan to try again."
+                    color: Theme.muted
+                    font.family: Theme.font
+                    font.pixelSize: 12
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    wrapMode: Text.Wrap
+                }
             }
 
             Repeater {
                 model: Network.networks
-                ListRow {
-                    id: row
-                    radius: 0
+                delegate: Rectangle {
+                    id: networkCard
                     required property var modelData
-                    readonly property bool open: networkBody.expanded === modelData.ssid
+                    readonly property bool selected: networkBody.selectedSsid === modelData.ssid
                     readonly property bool needsPassword: modelData.secure && !modelData.known && !modelData.active
+                    Layout.fillWidth: true
+                    implicitHeight: cardContent.implicitHeight + 18
+                    color: modelData.active ? Theme.surface : selected ? Theme.surface2 : "transparent"
+                    border.color: modelData.active ? Theme.accent : selected ? Theme.border : "transparent"
+                    radius: Theme.radiusSmall
 
-                    icon: Icons.wifiStrength[Math.min(4, Math.floor(modelData.signal / 20))]
-                    title: modelData.ssid
-                    sub: modelData.security + (modelData.known ? "  ·  saved" : "")
-                    trailing: Network.connecting === modelData.ssid ? "connecting…"
-                            : modelData.active ? "connected" : modelData.signal + "%"
-                    active: modelData.active
-                    busy: Network.connecting === modelData.ssid
-                    onClicked: networkBody.expanded = open ? "" : modelData.ssid
-
-                    RowLayout {
-                        visible: row.open
-                        Layout.fillWidth: true
+                    ColumnLayout {
+                        id: cardContent
+                        anchors.fill: parent
+                        anchors.margins: 9
                         spacing: 8
 
-                        InputField {
-                            id: pw
-                            radius: 0
-                            visible: row.needsPassword
-                            password: true
-                            placeholder: "Password"
-                            onAccepted: if (text !== "") {
-                                Network.connect(row.modelData, text);
-                                text = "";
+                        Item {
+                            Layout.fillWidth: true
+                            implicitHeight: networkHead.implicitHeight
+                            RowLayout {
+                                id: networkHead
+                                anchors.fill: parent
+                                spacing: 9
+                                Text {
+                                    text: Icons.wifiStrength[Math.min(4, Math.floor(networkCard.modelData.signal / 20))]
+                                    color: networkCard.modelData.active ? Theme.accent : Theme.subtext
+                                    font.family: Theme.iconFont
+                                    font.pixelSize: 18
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: networkCard.modelData.ssid
+                                        color: Theme.text
+                                        font.family: Theme.font
+                                        font.pixelSize: Theme.fontSize - 1
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: networkCard.modelData.known ? "Saved · " + networkCard.modelData.security
+                                            : networkCard.modelData.security
+                                        color: Theme.muted
+                                        font.family: Theme.font
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Text {
+                                    text: networkCard.modelData.active ? "CONNECTED"
+                                        : Network.connecting === networkCard.modelData.ssid ? "CONNECTING…"
+                                        : networkCard.modelData.signal + "%"
+                                    color: networkCard.modelData.active ? Theme.accent : Theme.muted
+                                    font.family: Theme.font
+                                    font.pixelSize: 9
+                                    font.letterSpacing: 0.5
+                                }
                             }
-                            onVisibleChanged: if (visible) forceFocus()
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: networkBody.selectedSsid = networkCard.selected ? "" : networkCard.modelData.ssid
+                            }
                         }
-                        Item { visible: !row.needsPassword; Layout.fillWidth: true }
-                        TextButton {
-                            radius: 0
-                            primary: true
-                            text: row.modelData.active ? "Disconnect" : "Connect"
-                            enabled: Network.connecting === "" && (!row.needsPassword || pw.text !== "")
-                            onClicked: {
-                                if (row.modelData.active) Network.disconnect();
-                                else {
-                                    Network.connect(row.modelData, pw.text);
-                                    pw.text = "";
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            visible: networkCard.selected
+                            spacing: 8
+
+                            InputField {
+                                id: passwordField
+                                visible: networkCard.needsPassword
+                                password: true
+                                placeholder: "Wi-Fi password"
+                                onVisibleChanged: if (visible && networkCard.selected)
+                                    Qt.callLater(() => passwordField.forceFocus())
+                                onAccepted: {
+                                    if (text.length > 0) {
+                                        Network.connect(networkCard.modelData, text);
+                                        text = "";
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: networkCard.needsPassword ? "Password required for this network"
+                                        : networkCard.modelData.known ? "Using saved credentials"
+                                        : networkCard.modelData.active ? "Currently connected"
+                                        : "Open network"
+                                    color: Theme.muted
+                                    font.family: Theme.font
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                                TextButton {
+                                    visible: networkCard.modelData.active
+                                    text: "Disconnect"
+                                    enabled: Network.connecting === "" && !Network.busy
+                                    onClicked: Network.disconnect()
+                                }
+                                TextButton {
+                                    visible: !networkCard.modelData.active
+                                    primary: true
+                                    text: Network.connecting === networkCard.modelData.ssid ? "Connecting…" : "Connect"
+                                    enabled: Network.connecting === "" && !Network.busy
+                                        && (!networkCard.needsPassword || passwordField.text.length > 0)
+                                    onClicked: {
+                                        Network.connect(networkCard.modelData, passwordField.text);
+                                        passwordField.text = "";
+                                    }
                                 }
                             }
                         }
@@ -323,6 +506,25 @@ PopupWindow {
             spacing: 8
 
             ListRow { radius: 0;
+                icon: Icons.cpu
+                title: GpuStatus.running ? "GPU running"
+                    : GpuStatus.available ? "GPU idle" : "GPU status unavailable"
+                sub: GpuStatus.summary
+                trailing: GpuStatus.available ? GpuStatus.utilization + "%"
+                    : Capture.recording ? "recording" : ""
+                active: GpuStatus.running
+                interactive: false
+            }
+
+            Text {
+                visible: !PowerProfile.available
+                text: "Power profile service unavailable"
+                color: Theme.muted
+                font.family: Theme.font
+                font.pixelSize: Theme.fontSize - 2
+            }
+
+            ListRow { radius: 0;
                 icon: Battery.charging ? Icons.charging : Icons.battery
                 title: Battery.percent + "%"
                 sub: Battery.status || "Battery"
@@ -345,22 +547,18 @@ PopupWindow {
                     icon: modelData === "performance" ? Icons.speed : modelData === "power-saver" ? Icons.leaf : Icons.balance
                     title: PowerProfile.pretty(modelData)
                     active: modelData === PowerProfile.current
+                    busy: PowerProfile.applying
                     onClicked: PowerProfile.set(modelData)
                 }
             }
-        }
-    }
 
-    Component {
-        id: powerC
-        ColumnLayout {
-            spacing: 8
-
-            TextButton { radius: 0; text: Icons.lock + "  Lock"; onClicked: Quickshell.execDetached(["loginctl", "lock-session"]) }
-            TextButton { radius: 0; text: Icons.suspend + "  Suspend"; onClicked: Quickshell.execDetached(["systemctl", "suspend"]) }
-            TextButton { radius: 0; text: Icons.logout + "  Log out"; onClicked: Hyprland.dispatch("exit") }
-            TextButton { radius: 0; text: Icons.reboot + "  Reboot"; onClicked: Quickshell.execDetached(["systemctl", "reboot"]) }
-            TextButton { radius: 0; text: Icons.power + "  Shut down"; onClicked: Quickshell.execDetached(["systemctl", "poweroff"]) }
+            Text {
+                visible: PowerProfile.error !== ""
+                text: PowerProfile.error
+                color: Theme.danger
+                font.family: Theme.font
+                font.pixelSize: Theme.fontSize - 2
+            }
         }
     }
 
@@ -400,14 +598,42 @@ PopupWindow {
         ColumnLayout {
             spacing: 8
 
+            ListRow { radius: 0;
+                icon: Icons.cpu
+                title: GpuStatus.running ? "GPU running"
+                    : GpuStatus.available ? "GPU idle" : "GPU status unavailable"
+                sub: GpuStatus.summary
+                trailing: GpuStatus.available ? GpuStatus.utilization + "%"
+                    : Capture.recording ? "recording" : ""
+                active: GpuStatus.running
+                interactive: false
+            }
+
+            Text {
+                visible: !PowerProfile.available
+                text: "Power profile service unavailable"
+                color: Theme.muted
+                font.family: Theme.font
+                font.pixelSize: Theme.fontSize - 2
+            }
+
             Repeater {
                 model: PowerProfile.profiles
                 ListRow { radius: 0;
                     icon: modelData === "performance" ? Icons.speed : modelData === "power-saver" ? Icons.leaf : Icons.balance
                     title: PowerProfile.pretty(modelData)
                     active: modelData === PowerProfile.current
+                    busy: PowerProfile.applying
                     onClicked: PowerProfile.set(modelData)
                 }
+            }
+
+            Text {
+                visible: PowerProfile.error !== ""
+                text: PowerProfile.error
+                color: Theme.danger
+                font.family: Theme.font
+                font.pixelSize: Theme.fontSize - 2
             }
         }
     }
@@ -417,22 +643,169 @@ PopupWindow {
         ColumnLayout {
             spacing: 8
 
-            TextButton { radius: 0;
-                text: Bluetooth.powered ? "Turn Bluetooth off" : "Turn Bluetooth on"
-                primary: !Bluetooth.powered
-                onClicked: Bluetooth.toggle()
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: btSummary.implicitHeight + 20
+                color: Theme.surface
+                border.color: Theme.border
+
+                RowLayout {
+                    id: btSummary
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 10
+                    Text {
+                        text: !Bluetooth.available ? Icons.bluetoothOff
+                            : Bluetooth.powered ? (Bluetooth.device ? Icons.bluetoothOn : Icons.bluetooth)
+                            : Icons.bluetoothOff
+                        color: Bluetooth.powered ? Theme.accent : Theme.muted
+                        font.family: Theme.iconFont
+                        font.pixelSize: 22
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text {
+                            Layout.fillWidth: true
+                            text: !Bluetooth.available ? "Bluetooth unavailable"
+                                : Bluetooth.device || (Bluetooth.powered ? "Bluetooth on" : "Bluetooth off")
+                            color: Theme.text
+                            font.family: Theme.font
+                            font.pixelSize: Theme.fontSize
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: !Bluetooth.available ? "No adapter detected"
+                                : Bluetooth.powered ? (Bluetooth.devices.filter(d => d.paired).length + " paired devices")
+                                : "Turn Bluetooth on to find devices"
+                            color: Theme.muted
+                            font.family: Theme.font
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Text { visible: Bluetooth.busy; text: "…"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 16 }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                TextButton {
+                    Layout.fillWidth: true
+                    text: Bluetooth.busy ? "Updating…" : Bluetooth.powered ? "Turn Bluetooth off" : "Turn Bluetooth on"
+                    enabled: Bluetooth.available && !Bluetooth.busy
+                    primary: !Bluetooth.powered
+                    sharp: true
+                    onClicked: Bluetooth.toggle()
+                }
+                TextButton {
+                    text: Bluetooth.scanning ? "Scanning…" : Icons.refresh + "  Scan"
+                    enabled: Bluetooth.powered && !Bluetooth.scanning && !Bluetooth.busy
+                    sharp: true
+                    onClicked: Bluetooth.scan()
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: Bluetooth.error !== ""
+                text: Bluetooth.error
+                color: Theme.danger
+                font.family: Theme.font
+                font.pixelSize: 11
+                wrapMode: Text.Wrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                visible: Bluetooth.powered
+                Text {
+                    Layout.fillWidth: true
+                    text: "DEVICES"
+                    color: Theme.muted
+                    font.family: Theme.font
+                    font.pixelSize: 10
+                    font.letterSpacing: 1.2
+                }
+                Text {
+                    text: Bluetooth.scanning ? "Searching nearby…" : Bluetooth.devices.length + " found"
+                    color: Theme.muted
+                    font.family: Theme.font
+                    font.pixelSize: 10
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: !Bluetooth.powered || Bluetooth.devices.length === 0
+                text: !Bluetooth.available ? "Bluetooth adapter unavailable."
+                    : !Bluetooth.powered ? "Turn Bluetooth on to find nearby devices."
+                    : Bluetooth.scanning ? "Scanning for nearby devices…"
+                    : "No devices yet. Scan to find nearby devices."
+                color: Theme.muted
+                font.family: Theme.font
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                Layout.topMargin: 8
+                Layout.bottomMargin: 8
             }
 
             Repeater {
                 model: Bluetooth.devices
-                ListRow { radius: 0;
-                    icon: Icons.bluetooth
-                    title: modelData.name
-                    sub: modelData.mac
-                    trailing: modelData.connected ? "connected" : ""
-                    active: modelData.connected
-                    busy: Bluetooth.pending === modelData.mac
-                    onClicked: Bluetooth.toggleDevice(modelData)
+                delegate: Rectangle {
+                    id: btCard
+                    required property var modelData
+                    visible: Bluetooth.powered
+                    Layout.fillWidth: true
+                    implicitHeight: btRow.implicitHeight + 18
+                    color: modelData.connected ? Theme.surface : "transparent"
+                    border.color: modelData.connected ? Theme.accent : Theme.border
+
+                    RowLayout {
+                        id: btRow
+                        anchors.fill: parent
+                        anchors.margins: 9
+                        spacing: 9
+                        Text {
+                            text: modelData.connected ? Icons.bluetoothOn : Icons.bluetooth
+                            color: modelData.connected ? Theme.accent : Theme.subtext
+                            font.family: Theme.iconFont
+                            font.pixelSize: 18
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.name
+                                color: Theme.text
+                                font.family: Theme.font
+                                font.pixelSize: Theme.fontSize - 1
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.connected ? "Connected"
+                                    : modelData.paired ? "Paired · " + modelData.mac : modelData.mac
+                                color: modelData.connected ? Theme.accent : Theme.muted
+                                font.family: Theme.font
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                            }
+                        }
+                        TextButton {
+                            text: Bluetooth.pending === modelData.mac ? "…"
+                                : modelData.connected ? "Disconnect"
+                                : modelData.paired ? "Connect" : "Pair"
+                            enabled: Bluetooth.pending === "" && Bluetooth.powered
+                            primary: !modelData.connected
+                            sharp: true
+                            onClicked: Bluetooth.toggleDevice(modelData)
+                        }
+                    }
                 }
             }
         }

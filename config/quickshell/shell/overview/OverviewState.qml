@@ -39,10 +39,10 @@ Singleton {
     }
 
     function moveWindow(c, ws) {
-        if (c.ws === ws) return;
-        Hyprland.dispatch("movetoworkspacesilent " + ws + ",address:0x" + normAddr(c.address));
-        // Local update so the UI changes immediately, then sync
-        clients = clients.map(x => x.address === c.address ? Object.assign({}, x, { ws: ws }) : x);
+        if (!c || c.ws === ws || !Number.isInteger(Number(ws)) || Number(ws) < 1) return;
+        // Use the normal dispatcher so dropping onto a workspace switches to it.
+        Hyprland.dispatch("movetoworkspace " + Number(ws) + ",address:0x" + normAddr(c.address));
+        close();
         refreshLater.restart();
     }
 

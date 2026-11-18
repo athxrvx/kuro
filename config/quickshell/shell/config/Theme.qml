@@ -91,8 +91,10 @@ Singleton {
     property int radius: 0
     property int radiusSmall: 0
 
-    // ── Font: JetBrainsMono Nerd Font for the whole UI (text + icons) ──
+    // ── Typography ──────────────────────────────────────────────────
     property string font: "JetBrainsMono Nerd Font"
+    // Proportional Nerd Font metrics keep pictograms centered and balanced.
+    property string iconFont: "JetBrainsMono Nerd Font Propo"
     property int fontSize: 15
     property int iconSize: 20
 

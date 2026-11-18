@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+export ANI_CLI_MENU="$HOME/.config/quickshell/shell/bin/ani-menu"
+export ANI_CLI_PLAYER=mpv
+exec ani-cli "$@"

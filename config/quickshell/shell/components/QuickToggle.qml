@@ -35,7 +35,7 @@ Rectangle {
             id: iconText
             text: root.icon
             color: root.fg
-            font.family: Theme.font
+            font.family: Theme.iconFont
             font.pixelSize: Theme.iconSize + 2
 
             // Pulse slowly while the command is running

@@ -23,7 +23,8 @@ PanelWindow {
 
     property string query: ""
     property int current: 0
-    property int armed: -1                    // dangerous action waiting for a second Enter
+    property int currentAction: 0
+    property var confirmationAction: null
 
     // Hover flyout state (description moved out of the rows to stay minimal).
     property string tipText: ""
@@ -33,10 +34,15 @@ PanelWindow {
     readonly property bool browsing: query.trim() === ""
     readonly property var sections: Launcher.sections
     readonly property int rowH: 50
-    readonly property bool searching: query.trim() !== ""
-    readonly property bool showHeader: Launcher.drilled && !searching
-    readonly property string sectionLabel: Launcher.sections.find(s => s.id === Launcher.section)?.label ?? "Menu"
     readonly property int shownRows: Math.max(1, Math.min(results.length, 9))
+    readonly property int shownHeight: {
+        let total = 0;
+        for (let i = 0; i < shownRows; i++)
+            total += results[i]?.kind === "containers"
+                ? (results[i]?.rowHeight ?? rowH) : rowH;
+        return Math.max(rowH, total);
+    }
+    readonly property string sectionLabel: Launcher.sections.find(s => s.id === Launcher.section)?.label ?? "Menu"
 
     // Colors are animated so a palette change fades in.
     property color cBg: Theme.bg
@@ -51,7 +57,7 @@ PanelWindow {
     Behavior on cDim { ColorAnimation { duration: 300 } }
 
     screen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0]
-    visible: Launcher.open || panel.opacity > 0
+    visible: Launcher.open
 
     anchors { top: true; bottom: true; left: true; right: true }
     exclusionMode: ExclusionMode.Ignore
@@ -60,7 +66,13 @@ PanelWindow {
     WlrLayershell.namespace: "quickshell-launcher"
     WlrLayershell.keyboardFocus: Launcher.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-    function resetSelection() { current = 0; armed = -1; hideTip(); }
+
+    function resetSelection() {
+        current = 0;
+        currentAction = 0;
+        confirmationAction = null;
+        hideTip();
+    }
 
     function showTip(row) {
         const s = row.result.sub ?? "";
@@ -80,16 +92,60 @@ PanelWindow {
 
     function move(d) {
         if (results.length === 0) return;
-        current = (current + d + results.length) % results.length;
-        armed = -1;
+        let next = current;
+        for (let i = 0; i < results.length; i++) {
+            next = (next + d + results.length) % results.length;
+            if (!(results[next].kind === "containers" && results[next].containerOptionsLabel)) {
+                current = next;
+                currentAction = 0;
+                break;
+            }
+        }
         list.positionViewAtIndex(current, ListView.Contain);
+    }
+
+    function adjustCurrent(direction) {
+        const result = results[current];
+        if (!result || typeof result.adjust !== "function") return false;
+        result.adjust(direction);
+        Launcher.liveTick++;
+        return true;
+    }
+
+    function requiresPowerConfirmation(result) {
+        const command = Array.isArray(result?.run?.cmd) ? result.run.cmd.join(" ") : "";
+        return command === "systemctl reboot" || command === "systemctl poweroff";
     }
 
     function activate(i) {
         const r = results[i];
-        if (!r) return;
-        if (r.danger && armed !== i) { armed = i; return; }
+        if (r.kind === "containers" && r.containerOptionsLabel) return;
+        if (r.kind === "containers" && r.containerActionStrip) {
+            const action = r.containerActions[currentAction] ?? r.containerActions[0];
+            if (action?.enabled !== false) Launcher.run(action);
+            return;
+        }
+        if (requiresPowerConfirmation(r)) {
+            confirmationAction = r;
+            field.text = "";
+            query = "";
+            hideTip();
+            confirmationField.text = "";
+            confirmationField.forceActiveFocus();
+            return;
+        }
         Launcher.run(r);
+    }
+
+    function resolveConfirmation(yes) {
+        const action = confirmationAction;
+        confirmationAction = null;
+        confirmationField.text = "";
+        if (yes && action) {
+            Launcher.run(action);
+        } else {
+            field.forceActiveFocus();
+        }
     }
 
     Connections {
@@ -107,12 +163,13 @@ PanelWindow {
     }
 
     onQueryChanged: {
+        if (confirmationAction) return;
         resetSelection();
         if (query.startsWith(":clip") && Clipboard.items.length === 0) Clipboard.refresh();
         if (query.startsWith(":file")) Launcher.findFiles(query.slice(5));
     }
 
-    onResultsChanged: if (current >= results.length) resetSelection()
+    onResultsChanged: if (!confirmationAction && current >= results.length) resetSelection()
 
     // Click anywhere outside the panel to dismiss.
     MouseArea {
@@ -122,16 +179,16 @@ PanelWindow {
 
     Rectangle {
         id: panel
-        width: Math.min(300, root.width - 80)
-        height: Math.min(root.height - 80, (root.showHeader ? 113 : 83) + root.shownRows * root.rowH)
+        width: Math.min(320, root.width - 80)
+        height: Math.min(root.height - 80, 83 + root.shownHeight)
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         // Centered using the default menu height, then kept fixed so the
         // panel grows downward instead of jumping when the height changes.
-        anchors.topMargin: Math.max(56, Math.round((root.height - (83 + Launcher.rootSections.length * root.rowH)) / 2) - 48)
+        anchors.topMargin: Math.max(56, Math.round((root.height - (83 + Launcher.rootSections.length * root.rowH)) / 2) + 2)
         color: root.cBg
-        border.width: 1
-        border.color: root.cBorder
+        border.width: 2
+        border.color: root.cAccent
 
         opacity: Launcher.open ? 1 : 0
         scale: Launcher.open ? 1 : 0.98
@@ -149,7 +206,7 @@ PanelWindow {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 42
-                color: root.cSurface
+                color: root.cBg
 
                 RowLayout {
                     anchors.fill: parent
@@ -157,12 +214,7 @@ PanelWindow {
                     anchors.rightMargin: 10
                     spacing: 8
 
-                    Text {
-                        text: Icons.search
-                        color: root.cAccent
-                        font.family: Theme.font
-                        font.pixelSize: 17
-                    }
+
 
                     Item {
                         Layout.fillWidth: true
@@ -179,8 +231,17 @@ PanelWindow {
                             font.family: Theme.font
                             font.pixelSize: 17
                             clip: true
-                            focus: Launcher.open
-                            onTextChanged: root.query = text
+                            focus: Launcher.open && !root.confirmationAction
+                            enabled: !root.confirmationAction
+                            onTextChanged: {
+                                if (root.confirmationAction) {
+                                    const answer = text.toLowerCase();
+                                    if (answer.length > 1 || (answer !== "" && answer !== "y" && answer !== "n"))
+                                        text = "";
+                                    return;
+                                }
+                                root.query = text;
+                            }
 
                             Keys.onPressed: event => {
                                 const ctrl = event.modifiers & Qt.ControlModifier;
@@ -188,15 +249,26 @@ PanelWindow {
                                     if (text !== "") text = "";
                                     else if (Launcher.drilled) Launcher.goBack();
                                     else Launcher.open = false;
+                                } else if ((event.key === Qt.Key_Left || event.key === Qt.Key_Right)
+                                           && text === "" && root.adjustCurrent(event.key === Qt.Key_Right ? 1 : -1)) {
+                                    // Live slider rows adjust horizontally while focused.
                                 } else if (event.key === Qt.Key_Left && text === "" && Launcher.drilled) {
-                                    Launcher.goBack();
-                                } else if (event.key >= Qt.Key_1 && event.key <= Qt.Key_6) {
-                                    root.selectSection(Launcher.sections[event.key - Qt.Key_1].id);
+                                    if (root.results[root.current]?.containerActionStrip) {
+                                        const count = root.results[root.current].containerActions.length;
+                                        root.currentAction = (root.currentAction + count - 1) % count;
+                                    } else Launcher.goBack();
+                                } else if (event.key === Qt.Key_Right && root.results[root.current]?.containerActionStrip) {
+                                    const count = root.results[root.current].containerActions.length;
+                                    root.currentAction = (root.currentAction + 1) % count;
+                                } else if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+                                    const sectionIndex = event.key - Qt.Key_1;
+                                    if (sectionIndex < Launcher.rootSections.length)
+                                        root.selectSection(Launcher.rootSections[sectionIndex].id);
                                 } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-                                    root.selectSection(Launcher.sections[
-                                        (Launcher.sections.findIndex(s => s.id === Launcher.section)
-                                         + (event.key === Qt.Key_Tab ? 1 : -1) + Launcher.sections.length)
-                                        % Launcher.sections.length].id);
+                                    root.selectSection(Launcher.rootSections[
+                                        (Launcher.rootSections.findIndex(s => s.id === Launcher.section)
+                                         + (event.key === Qt.Key_Tab ? 1 : -1) + Launcher.rootSections.length)
+                                        % Launcher.rootSections.length].id);
                                 } else if (event.key === Qt.Key_Down || (ctrl && event.key === Qt.Key_J)) {
                                     root.move(1);
                                 } else if (event.key === Qt.Key_Up || (ctrl && event.key === Qt.Key_K)) {
@@ -213,61 +285,14 @@ PanelWindow {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             visible: field.text === ""
-                            text: "Go..."
+                            text: Launcher.drilled ? root.sectionLabel + "..." : "Go..."
                             color: root.cDim
                             font.family: Theme.font
                             font.pixelSize: 17
+                            elide: Text.ElideRight
                         }
                     }
                 }
-            }
-
-            // ── Nested-menu header (back + current category) ────────
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                visible: root.showHeader
-
-                Rectangle {
-                    implicitWidth: 20
-                    implicitHeight: 20
-                    color: backMouse.containsMouse ? Qt.rgba(root.cText.r, root.cText.g, root.cText.b, 0.06)
-                                                   : "transparent"
-                    Behavior on color { ColorAnimation { duration: 100 } }
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: Icons.g(0xF0141)                    // md-chevron_left
-                        color: root.cText
-                        font.family: Theme.font
-                        font.pixelSize: 17
-                    }
-
-                    MouseArea {
-                        id: backMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: Launcher.goBack()
-                    }
-                }
-
-                Text {
-                    text: root.sectionLabel
-                    color: root.cAccent
-                    font.family: Theme.font
-                    font.pixelSize: 13
-                    font.letterSpacing: 1
-                }
-
-                Item { Layout.fillWidth: true }
-            }
-
-            // ── Divider ──────────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: 1
-                color: root.cBorder
             }
 
             // ── Results ──────────────────────────────────────────────
@@ -303,28 +328,50 @@ PanelWindow {
                         readonly property var result: row.modelData
 
                         width: ListView.view.width
-                        height: root.rowH
+                        height: row.result.kind === "containers"
+                                ? (row.result.rowHeight ?? root.rowH) : root.rowH
+
+                        Rectangle {
+                            x: 8
+                            y: 4
+                            width: parent.width - 16
+                            height: Math.max(0, row.result.containerCardHeight)
+                            visible: row.result.kind === "containers" && row.result.containerHeader
+                            color: root.cSurface
+                            border.width: 1
+                            border.color: root.cBorder
+                            radius: 0
+                            z: -1
+                        }
 
                         Rectangle {
                             anchors.fill: parent
+                            anchors.margins: row.result.kind === "containers" && row.result.containerCardMember ? 10 : 0
+                            visible: !(row.result.kind === "containers"
+                                       && (row.result.containerOptionsLabel || row.result.containerActionStrip))
                             color: row.isCurrent
-                                   ? Qt.rgba(root.cAccent.r, root.cAccent.g, root.cAccent.b, 0.12)
+                                   ? Qt.rgba(root.cAccent.r, root.cAccent.g, root.cAccent.b, 0.26)
                                    : rowMouse.containsMouse
                                      ? Qt.rgba(root.cText.r, root.cText.g, root.cText.b, 0.04)
                                      : "transparent"
+                            radius: 0
                             Behavior on color { ColorAnimation { duration: 100 } }
                         }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 10
+                            visible: !(row.result.kind === "containers"
+                                       && (row.result.containerOptionsLabel || row.result.containerActionStrip))
+                            anchors.leftMargin: row.result.kind === "containers" && row.result.containerHeader ? 22 : 10
+                            anchors.rightMargin: row.result.kind === "containers" && row.result.containerHeader ? 22 : 10
                             spacing: 10
 
                             // Icon (desktop entry / thumbnail / glyph)
                             Item {
-                                implicitWidth: 18
-                                implicitHeight: 18
+                                implicitWidth: row.result.kind === "menu" ? 30
+                                    : row.result.kind === "power" ? 34 : 22
+                                implicitHeight: row.result.kind === "power" ? 32 : 24
+                                clip: true
 
                                 ClippingRectangle {
                                     anchors.fill: parent
@@ -343,24 +390,35 @@ PanelWindow {
                                 }
                                 Text {
                                     anchors.centerIn: parent
+                                    width: parent.width
+                                    height: parent.height
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.NoWrap
+                                    clip: true
                                     visible: img.status !== Image.Ready
                                     text: row.result.glyph ?? ""
                                     color: row.isCurrent ? root.cAccent : row.result.danger ? Theme.danger : root.cDim
-                                    font.family: Theme.font
-                                    font.pixelSize: 17
+                                    font.family: Theme.iconFont
+                                    font.pixelSize: row.result.kind === "power" ? 27
+                                        : row.result.kind === "menu" ? 20 : 19
                                 }
                             }
 
-                            Text {
+                            ColumnLayout {
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignVCenter
-                                text: root.armed === row.index
-                                      ? "Press Enter again to " + row.result.title.toLowerCase()
-                                      : row.result.title
-                                color: root.armed === row.index ? Theme.danger : root.cText
-                                font.family: Theme.font
-                                font.pixelSize: row.result.kind === "calc" ? 17 : 15
-                                elide: Text.ElideRight
+                                spacing: 1
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: row.result.title
+                                    color: root.cText
+                                    font.family: Theme.font
+                                    font.pixelSize: row.result.kind === "containers" && row.result.containerHeader ? 15
+                                        : row.result.kind === "calc" ? 17 : 15
+                                    font.bold: row.result.kind === "containers" && row.result.containerHeader
+                                    elide: Text.ElideRight
+                                }
                             }
 
                             // Status / category number / search tag
@@ -369,6 +427,8 @@ PanelWindow {
                                 Layout.alignment: Qt.AlignVCenter
                                 text: row.result.status === "missing" ? "missing"
                                       : row.result.status === "ok" ? "installed"
+                                      : row.result.kind === "control" && row.result.value !== "" ? row.result.value + (row.result.submenu ? "  ›" : "")
+                                      : row.result.control !== "" ? row.result.value
                                       : !root.browsing
                                         ? (row.result.section ? row.result.section + "  " : "")
                                           + (row.result.hint ?? "")
@@ -377,6 +437,7 @@ PanelWindow {
                                           : row.result.hint ?? ""
                                 color: row.result.status === "missing" ? Theme.danger
                                        : row.result.status === "ok" ? Theme.teal
+                                       : row.result.kind === "control" && row.result.active ? root.cAccent
                                        : root.cDim
                                 font.family: Theme.font
                                 font.pixelSize: 10
@@ -384,17 +445,206 @@ PanelWindow {
                             }
                         }
 
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 18
+                            anchors.rightMargin: 18
+                            anchors.topMargin: 12
+                            anchors.bottomMargin: 12
+                            spacing: 10
+                            visible: row.result.kind === "containers" && row.result.containerActionStrip
+
+                            Repeater {
+                                model: row.result.containerActions
+
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    color: !modelData.enabled
+                                           ? Qt.rgba(root.cText.r, root.cText.g, root.cText.b, 0.025)
+                                           : (actionMouse.containsMouse
+                                              || (root.current === row.index && root.currentAction === index))
+                                             ? Qt.rgba(root.cAccent.r, root.cAccent.g, root.cAccent.b, 0.14)
+                                             : Qt.rgba(root.cText.r, root.cText.g, root.cText.b, 0.035)
+                                    border.width: 1
+                                    border.color: !modelData.enabled ? root.cBorder
+                                                 : actionMouse.containsMouse
+                                                   ? root.cAccent : root.cBorder
+                                    radius: 0
+                                    Behavior on color { ColorAnimation { duration: 100 } }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: modelData.title
+                                        color: modelData.enabled ? root.cText : root.cDim
+                                        font.family: Theme.font
+                                        font.pixelSize: 12
+                                    }
+
+                                    MouseArea {
+                                        id: actionMouse
+                                        anchors.fill: parent
+                                        enabled: modelData.enabled
+                                        hoverEnabled: true
+                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                        onEntered: {
+                                            root.current = row.index;
+                                            root.currentAction = index;
+                                        }
+                                        onClicked: {
+                                            root.current = row.index;
+                                            root.currentAction = index;
+                                            Launcher.run(modelData);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: row.result.kind === "containers" && row.result.containerOptionsLabel
+                            text: row.result.title.toUpperCase()
+                            color: root.cDim
+                            font.family: Theme.font
+                            font.pixelSize: 10
+                            font.letterSpacing: 1.1
+                        }
+
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.leftMargin: row.result.containerHeader ? 18 : 38
+                            anchors.right: parent.right
+                            anchors.rightMargin: 18
+                            anchors.bottom: parent.bottom
+                            height: 1
+                            visible: row.result.kind === "containers" && row.result.containerHeader
+                            color: root.cBorder
+                        }
+
                         MouseArea {
                             id: rowMouse
                             anchors.fill: parent
+                            enabled: !(row.result.kind === "containers"
+                                          && (row.result.containerOptionsLabel || row.result.containerActionStrip))
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onEntered: { root.current = row.index; root.armed = -1; root.showTip(row); }
+                            onEntered: {
+                                root.current = row.index;
+                                root.showTip(row);
+                            }
                             onExited: root.hideTip()
                             onClicked: root.activate(row.index)
+                            onWheel: wheel => {
+                                if (!row.result.adjust) return;
+                                root.current = row.index;
+                                root.adjustCurrent(wheel.angleDelta.y > 0 ? 1 : -1);
+                                wheel.accepted = true;
+                            }
                         }
                     }
                 }
+
+            }
+        }
+    }
+
+    // Small centered modal for session actions that need typed confirmation.
+    Rectangle {
+        anchors.fill: parent
+        visible: root.confirmationAction !== null
+        color: Qt.rgba(0, 0, 0, 0.56)
+        z: 20
+
+        MouseArea { anchors.fill: parent }
+    }
+
+    Rectangle {
+        id: confirmationWindow
+        width: Math.min(360, root.width - 32)
+        height: 124
+        anchors.centerIn: parent
+        visible: root.confirmationAction !== null
+        color: root.cBg
+        border.width: 1
+        border.color: root.cBorder
+        z: 21
+
+        MouseArea { anchors.fill: parent }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 18
+            spacing: 12
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 38
+                color: root.cSurface
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 6
+
+                    Text {
+                        text: "You sure? / "
+                        color: root.cAccent
+                        font.family: Theme.font
+                        font.pixelSize: 14
+                    }
+
+                    TextInput {
+                        id: confirmationField
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: root.cText
+                        selectionColor: Theme.selectionBg
+                        selectedTextColor: Theme.selectionFg
+                        cursorDelegate: Rectangle { width: 2; color: root.cAccent }
+                        font.family: Theme.font
+                        font.pixelSize: 14
+                        maximumLength: 1
+                        focus: root.confirmationAction !== null
+                        onTextChanged: {
+                            const answer = text.toLowerCase();
+                            if (answer !== "" && answer !== "y" && answer !== "n") text = "";
+                        }
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Escape) {
+                                root.resolveConfirmation(false);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                const answer = text.trim().toLowerCase();
+                                if (answer === "y") root.resolveConfirmation(true);
+                                else if (answer === "n") root.resolveConfirmation(false);
+                                event.accepted = true;
+                            } else if (event.key !== Qt.Key_Backspace
+                                       && event.text.toLowerCase() !== "y"
+                                       && event.text.toLowerCase() !== "n") {
+                                event.accepted = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Type y or n, then press Enter · Esc cancels"
+                color: root.cDim
+                font.family: Theme.font
+                font.pixelSize: 11
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
             }
         }
     }

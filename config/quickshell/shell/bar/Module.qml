@@ -26,7 +26,7 @@ Item {
     readonly property var comps: ({
         workspaces: workspacesC, window: windowC,
         clock: clockC, date: dateC, datetime: datetimeC,
-        launcher: launcherC, power: powerC, control: controlC,
+        launcher: launcherC, control: controlC,
         network: networkC, bluetooth: bluetoothC,
         volume: volumeC, mic: micC, brightness: brightnessC, battery: batteryC,
         cpu: cpuC, memory: memoryC, profile: profileC,
@@ -37,7 +37,7 @@ Item {
     // Hide modules whose data is unavailable (for example battery on a desktop)
     visible: ({
         mouse: MouseBattery.available,
-        bluetooth: Bluetooth.powered,
+        bluetooth: Bluetooth.available,
         mic: Audio.hasMic,
         brightness: Brightness.available,
         battery: Battery.available,
@@ -156,19 +156,9 @@ Item {
     }
 
     Component {
-        id: powerC
-        BarItem {
-            id: powerItem
-            icon: Icons.power
-            iconColor: Theme.danger
-            onClicked: BarPopup.toggle("power", powerItem, root.window)
-        }
-    }
-
-    Component {
         id: controlC
         BarItem {
-            icon: Icons.settings
+            icon: Icons.arch
             onClicked: root.toggleControl()
             onRightClicked: root.openPage("profile")
         }
@@ -179,7 +169,8 @@ Item {
         BarItem {
             id: networkItem
             icon: Network.ethConnected ? Icons.ethernet
-                : Network.ssid !== "" ? Icons.wifi : Icons.wifiOff
+                : Network.ssid !== "" ? Icons.wifiStrength[Math.min(4, Math.floor(Network.wifiSignal / 20))]
+                : Icons.wifiOff
             dimmed: !Network.online
             onClicked: BarPopup.toggle("network", networkItem, root.window)
         }
@@ -189,9 +180,9 @@ Item {
         id: bluetoothC
         BarItem {
             id: bluetoothItem
-            visible: Bluetooth.powered
-            icon: Bluetooth.device !== "" ? Icons.bluetoothOn : Icons.bluetooth
-            label: Bluetooth.device
+            icon: !Bluetooth.powered ? Icons.bluetoothOff
+                : Bluetooth.device !== "" ? Icons.bluetoothOn : Icons.bluetooth
+            dimmed: !Bluetooth.powered
             onClicked: BarPopup.toggle("bluetooth", bluetoothItem, root.window)
         }
     }
@@ -271,7 +262,7 @@ Item {
             visible: PowerProfile.available
             icon: PowerProfile.current === "performance" ? Icons.speed
                 : PowerProfile.current === "power-saver" ? Icons.leaf : Icons.balance
-            // Left click opens the profile list; right click opens Power in Control Center
+            // Left click opens profiles; right click opens the launcher's Power page.
             onClicked: BarPopup.toggle("profile", profileItem, root.window)
             onRightClicked: root.openPage("power")
         }

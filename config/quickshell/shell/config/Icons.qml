@@ -3,7 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 
-// Nerd Font glyphs (Material Design, nf-md- prefix).
+// Unified Material Design Icons glyph set from Nerd Fonts (nf-md- prefix).
 // Use code points so the file stays readable in editors without Nerd Font.
 Singleton {
     function g(cp) { return String.fromCodePoint(cp) }

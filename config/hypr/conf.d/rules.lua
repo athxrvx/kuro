@@ -22,6 +22,15 @@ return function()
     })
 
     hl.window_rule({
+        name   = "flea-file-manager-popup",
+        match  = { class = "^com\\.thisisgm\\.flea$" },
+        float  = true,
+        center = true,
+        workspace = "special:filemanager",
+        size   = { 1100, 720 },
+    })
+
+    hl.window_rule({
         name  = "fix-xwayland-drags",
         match = { class = "^$", title = "^$", xwayland = true, float = true, fullscreen = false, pin = false },
         no_focus = true,

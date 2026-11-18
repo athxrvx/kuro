@@ -66,7 +66,7 @@ Rectangle {
                 visible: root.icon !== ""
                 text: root.icon
                 color: root.active ? Theme.text : Theme.subtext
-                font.family: Theme.font
+                font.family: Theme.iconFont
                 font.pixelSize: Theme.iconSize
 
                 SequentialAnimation on opacity {

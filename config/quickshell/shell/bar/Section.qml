@@ -29,7 +29,9 @@ Rectangle {
     RowLayout {
         id: row
         anchors.centerIn: parent
-        spacing: sec.layout.style === "border" ? 6 : 2
+        spacing: sec.layout.style === "border" ? 6
+            : (sec.specs.length > 1 && sec.specs[0] === "control"
+               && String(sec.specs[1]).startsWith("workspaces") ? 10 : 2)
 
         Repeater {
             model: sec.specs

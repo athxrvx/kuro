@@ -22,9 +22,9 @@ ColumnLayout {
     readonly property real sx: tileW / Math.max(1, mon.w)
     readonly property real sy: tileH / Math.max(1, mon.h)
 
-    signal dragStarted(var client)
+    signal dragStarted(var client, point pos)
     signal dragMoved(point pos)
-    signal dragEnded()
+    signal dragEnded(point pos)
 
     spacing: 6
 
@@ -94,9 +94,9 @@ ColumnLayout {
                 height: Math.max(18, modelData.h * root.sy)
                 z: modelData.floating ? 2 : 1
                 overlay: root.overlay
-                onDragStarted: c => root.dragStarted(c)
+                onDragStarted: (c, p) => root.dragStarted(c, p)
                 onDragMoved: p => root.dragMoved(p)
-                onDragEnded: root.dragEnded()
+                onDragEnded: p => root.dragEnded(p)
             }
         }
     }

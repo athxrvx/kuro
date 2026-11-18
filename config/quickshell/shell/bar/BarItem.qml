@@ -34,7 +34,7 @@ Rectangle {
             visible: root.icon !== ""
             text: root.icon
             color: root.iconColor
-            font.family: Theme.font
+            font.family: Theme.iconFont
             font.pixelSize: Theme.iconSize - 3
         }
         Text {

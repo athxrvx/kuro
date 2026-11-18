@@ -15,6 +15,7 @@ PopupWindow {
     required property Item target       // clock item used as the position reference
 
     signal dismissed()
+    property bool open: false
 
     readonly property bool hovered: hover.hovered
 
@@ -56,17 +57,23 @@ PopupWindow {
         today = new Date();
         year = today.getFullYear();
         month = today.getMonth();
+        selectedDate = today;
+        showDay = false;
     }
 
     function selectDate(d) {
         selectedDate = d;
+        year = d.getFullYear();
+        month = d.getMonth();
         showDay = true;
     }
 
     function place() {
         const p = target.mapToItem(null, target.width / 2, target.height);
         const x = Math.round(p.x - implicitWidth / 2);
-        anchor.rect.x = Math.max(4, Math.min(x, barWindow.width - implicitWidth - 4));
+        const edge = Theme.popupGap;
+        const maxX = Math.max(edge, barWindow.width - implicitWidth - edge);
+        anchor.rect.x = Math.max(edge, Math.min(x, maxX));
         anchor.rect.y = Math.round(p.y + Theme.popupGap);
     }
 
@@ -74,11 +81,13 @@ PopupWindow {
     readonly property bool showWeather: Config.weatherEnabled && Weather.available
     readonly property var shortDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]   // getDay(): Sunday = 0
 
-    implicitWidth: Math.max(280, Math.min(340, barWindow.width - 16))
+    implicitWidth: Math.min(340, Math.max(1, barWindow.width - Theme.popupGap * 2))
     implicitHeight: body.implicitHeight + 24
     color: "transparent"
 
-    onVisibleChanged: if (visible) {
+    visible: popup.open || calendarSurface.opacity > 0
+
+    onOpenChanged: if (popup.open) {
         resetMonth();
         place();
         if (Config.weatherEnabled && !Weather.available) Weather.refresh();
@@ -86,15 +95,22 @@ PopupWindow {
 
     HyprlandFocusGrab {
         windows: [popup]
-        active: popup.visible
+        active: popup.open && popup.visible
         onCleared: popup.dismissed()
     }
 
     Rectangle {
+        id: calendarSurface
         anchors.fill: parent
         radius: 0
         color: Theme.bg
         border.color: Theme.border
+        opacity: popup.open ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        transform: Translate {
+            y: popup.open ? 0 : -8
+            Behavior on y { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        }
 
         HoverHandler { id: hover }
 
@@ -105,8 +121,8 @@ PopupWindow {
         ColumnLayout {
             id: body
             anchors.fill: parent
-            anchors.margins: 8
-            spacing: 10
+            anchors.margins: 14
+            spacing: 12
 
             // ── Current weather (click icon = refresh) ────────────────
             RowLayout {
@@ -117,7 +133,7 @@ PopupWindow {
                 Text {
                     text: Weather.icon
                     color: Theme.accent
-                    font.family: Theme.font
+                    font.family: Theme.iconFont
                     font.pixelSize: 42
                     opacity: Weather.loading ? 0.5 : 1
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Weather.refresh() }
@@ -180,45 +196,88 @@ PopupWindow {
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.maximumWidth: 440
-                    spacing: 10
+                    spacing: 12
 
                     // Title + navigation
                     RowLayout {
                         Layout.fillWidth: true
+                        spacing: 6
 
-                        Text {
-                            Layout.preferredWidth: 28
-                            Layout.preferredHeight: 28
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: "‹"
-                            color: Theme.subtext
-                            font.family: Theme.font
-                            font.pixelSize: 23
-                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: popup.shift(-1) }
+                        Rectangle {
+                            Layout.preferredWidth: 30
+                            Layout.preferredHeight: 30
+                            color: prevMouse.containsMouse ? Theme.surface : "transparent"
+                            border.width: 1
+                            border.color: prevMouse.containsMouse ? Theme.border : "transparent"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "‹"
+                                color: Theme.text
+                                font.family: Theme.font
+                                font.pixelSize: 22
+                            }
+                            MouseArea {
+                                id: prevMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: popup.shift(-1)
+                            }
                         }
 
                         Text {
                             Layout.fillWidth: true
-                            horizontalAlignment: Text.AlignHCenter
+                            horizontalAlignment: Text.AlignLeft
                             text: popup.monthNames[popup.month] + " " + popup.year
                             color: Theme.text
                             font.family: Theme.font
                             font.pixelSize: Theme.fontSize + 3
                             font.bold: true
-                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: popup.resetMonth() }
                         }
 
-                        Text {
-                            Layout.preferredWidth: 28
-                            Layout.preferredHeight: 28
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            text: "›"
-                            color: Theme.subtext
-                            font.family: Theme.font
-                            font.pixelSize: 23
-                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: popup.shift(1) }
+                        Rectangle {
+                            Layout.preferredWidth: 48
+                            Layout.preferredHeight: 30
+                            color: todayMouse.containsMouse ? Theme.surface : "transparent"
+                            border.width: 1
+                            border.color: todayMouse.containsMouse ? Theme.border : "transparent"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Today"
+                                color: Theme.accent
+                                font.family: Theme.font
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+                            MouseArea {
+                                id: todayMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: popup.resetMonth()
+                            }
+                        }
+
+                        Rectangle {
+                            Layout.preferredWidth: 30
+                            Layout.preferredHeight: 30
+                            color: nextMouse.containsMouse ? Theme.surface : "transparent"
+                            border.width: 1
+                            border.color: nextMouse.containsMouse ? Theme.border : "transparent"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "›"
+                                color: Theme.text
+                                font.family: Theme.font
+                                font.pixelSize: 22
+                            }
+                            MouseArea {
+                                id: nextMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: popup.shift(1)
+                            }
                         }
                     }
 
@@ -226,7 +285,7 @@ PopupWindow {
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 7
-                        columnSpacing: 0
+                        columnSpacing: 4
                         rowSpacing: 4
 
                         Repeater {
@@ -254,27 +313,29 @@ PopupWindow {
                                     && modelData.date.toDateString() === popup.selectedDate.toDateString()
 
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 32
+                                Layout.preferredHeight: 34
                                 radius: 0
-                                color: modelData.today ? Theme.accent
-                                     : selected ? Theme.surface2 : "transparent"
-                                border.width: selected && !modelData.today ? 1 : 0
+                                color: selected || (modelData.today && !popup.showDay) ? Theme.accent
+                                     : dayMouse.containsMouse ? Theme.surface2 : "transparent"
+                                border.width: modelData.today && popup.showDay && !selected ? 1 : 0
                                 border.color: Theme.accent
 
                                 Text {
                                     anchors.centerIn: parent
                                     text: modelData.day
-                                    color: modelData.today ? Theme.accentFg
+                                    color: selected || (modelData.today && !popup.showDay) ? Theme.accentFg
                                          : !modelData.current ? Theme.muted
                                          : index % 7 >= 5 ? Theme.rose : Theme.text
                                     opacity: modelData.current ? 1 : 0.5
                                     font.family: Theme.font
                                     font.pixelSize: Theme.fontSize - 1
-                                    font.bold: modelData.today
+                                    font.bold: selected || modelData.today
                                 }
 
                                 MouseArea {
+                                    id: dayMouse
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: popup.selectDate(modelData.date)
                                 }
@@ -335,7 +396,7 @@ PopupWindow {
                             Layout.alignment: Qt.AlignHCenter
                             text: Weather.iconFor(modelData.code, true)
                             color: Theme.accent
-                            font.family: Theme.font
+                            font.family: Theme.iconFont
                             font.pixelSize: 21
                         }
                         Text {

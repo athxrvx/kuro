@@ -134,12 +134,18 @@ Scope {
                                 dropTarget: win.dragging !== null && win.hoveredWs === modelData
                                 overlay: body
                                 onHoveredChanged: if (hovered && win.dragging === null) win.selected = modelData
-                                onDragStarted: c => win.dragging = c
+                                onDragStarted: (c, p) => {
+                                    win.dragging = c;
+                                    win.dragPos = p;
+                                }
                                 onDragMoved: p => win.dragPos = p
-                                onDragEnded: {
-                                    if (win.dragging && win.hoveredWs > 0)
-                                        OverviewState.moveWindow(win.dragging, win.hoveredWs);
+                                onDragEnded: p => {
+                                    win.dragPos = p;
+                                    const targetWs = win.hoveredWs;
+                                    const client = win.dragging;
                                     win.dragging = null;
+                                    if (client && targetWs > 0)
+                                        OverviewState.moveWindow(client, targetWs);
                                 }
                             }
                         }

@@ -6,14 +6,15 @@
 //   right click   app context menu: open, app actions, windows, pin/unpin
 //   hover         window previews for every window of the grouped app
 //
-// Left side: launcher and workspace overview (the Alt+Tab switcher).
-// Toggle the dock with the launcher (Style -> Appearance -> Show dock) or:
+// Left side: workspace overview (the Alt+Tab switcher).
+// Toggle the dock from Style -> Appearance -> Show dock or:
 //   qs -c shell ipc call dock toggle
 
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
+import Quickshell.Hyprland
 import qs.config
 import qs.dock
 import qs.overview
@@ -345,46 +346,6 @@ Scope {
                     y: (flick.height - height) / 2
                     spacing: 4
 
-                    // Launcher
-                    Rectangle {
-                        readonly property bool active: Launcher.open
-                        width: 44
-                        height: 40
-                        radius: Theme.radiusSmall
-                        color: active
-                            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.20)
-                            : launcherMouse.containsMouse
-                                ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
-                                : "transparent"
-                        border.width: active ? 1 : 0
-                        border.color: Theme.accent
-                        Behavior on color { ColorAnimation { duration: 100 } }
-
-                        IconImage {
-                            anchors.centerIn: parent
-                            implicitSize: 24
-                            source: "file:///usr/share/icons/Papirus/48x48/apps/app-launcher.svg"
-                        }
-
-                        Rectangle {
-                            visible: parent.active
-                            anchors.bottom: parent.bottom
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 12
-                            height: 2
-                            color: Theme.accent
-                        }
-
-                        MouseArea {
-                            id: launcherMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            Accessible.name: "App launcher"
-                            onClicked: { root.closePreview(); Launcher.toggle(); }
-                        }
-                    }
-
                     // Workspace overview / window switcher (Alt+Tab)
                     Rectangle {
                         readonly property bool active: OverviewState.shown
@@ -468,7 +429,7 @@ Scope {
                                     visible: root.iconFor(item.app.appId, item.app.entry) === ""
                                     text: Icons.g(0xF03D6)
                                     color: Theme.text
-                                    font.family: Theme.font
+                                    font.family: Theme.iconFont
                                     font.pixelSize: 17
                                 }
                             }
@@ -510,6 +471,8 @@ Scope {
             PopupWindow {
                 id: hoverPopup
 
+                readonly property bool requestedOpen: DockState.shown && root.previewOpen
+                    && root.previewItem !== null && root.previewScreen === win.modelData.name
                 readonly property var preview: root.previewItem
                 readonly property int count: preview ? preview.windows.length : 0
                 readonly property int cols: Math.max(1, Math.min(3, count))
@@ -522,16 +485,22 @@ Scope {
                 implicitWidth: cols * 150 + (cols - 1) * 6 + 16
                 implicitHeight: 44 + rows * 108 + (rows - 1) * 6
                 color: "transparent"
-                visible: DockState.shown && root.previewOpen && root.previewItem !== null
-                         && root.previewScreen === win.modelData.name
-                onVisibleChanged: if (visible) root.holdPreview()
+                visible: hoverPopup.requestedOpen || previewSurface.opacity > 0
+                onVisibleChanged: if (visible && hoverPopup.requestedOpen) root.holdPreview()
 
                 Rectangle {
+                    id: previewSurface
                     anchors.fill: parent
                     color: Theme.bg
                     border.width: 1
                     border.color: Theme.border
                     clip: true
+                    opacity: hoverPopup.requestedOpen ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                    transform: Translate {
+                        y: hoverPopup.requestedOpen ? 0 : 8
+                        Behavior on y { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                    }
 
                     HoverHandler {
                         id: previewHover
@@ -668,19 +637,29 @@ Scope {
             id: menuWin
             required property var modelData
 
+            readonly property bool menuRequested: DockState.shown && root.menuOpen
+                && root.menuScreenName === modelData.name
+
             screen: modelData
-            visible: DockState.shown && root.menuOpen && root.menuScreenName === modelData.name
+            visible: menuWin.menuRequested || menuBox.opacity > 0
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.namespace: "quickshell-dock-menu"
-            WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.keyboardFocus: menuWin.menuRequested ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-            onVisibleChanged: if (visible) menuBox.forceActiveFocus()
+            onVisibleChanged: if (menuWin.menuRequested) menuBox.forceActiveFocus()
+
+            HyprlandFocusGrab {
+                windows: [menuWin]
+                active: menuWin.menuRequested && menuWin.visible
+                onCleared: root.closeMenu()
+            }
 
             MouseArea {
                 anchors.fill: parent
+                enabled: menuWin.menuRequested
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 onClicked: root.closeMenu()
             }
@@ -697,6 +676,12 @@ Scope {
                 border.width: 1
                 border.color: Theme.border
                 focus: true
+                opacity: menuWin.menuRequested ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                transform: Translate {
+                    y: menuWin.menuRequested ? 0 : 6
+                    Behavior on y { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                }
 
                 Keys.onPressed: event => {
                     if (event.key === Qt.Key_Escape) root.closeMenu();
@@ -773,7 +758,7 @@ Scope {
                                         visible: (menuRow.modelData.icon ?? "") === ""
                                         text: menuRow.modelData.glyph ?? Icons.g(0xF05B0)
                                         color: Theme.text
-                                        font.family: Theme.font
+                                        font.family: Theme.iconFont
                                         font.pixelSize: 14
                                     }
                                 }

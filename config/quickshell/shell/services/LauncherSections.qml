@@ -18,21 +18,27 @@ Singleton {
     readonly property var sections: buildSections()
 
     function buildSections() {
-        const list = baseSections();
+        return baseSections();
+    }
 
-        const themes = list.find(s => s.id === "style-themes");
-        if (themes) {
-            themes.items = (Config.kuroSchemes ?? []).map(t => ({
-                id: "theme_" + t.id,
-                title: t.name,
-                sub: "Colorscheme",
-                glyph: t.id === Config.kuroScheme ? g(0xF012C) : g(0xF03D8),
-                keys: "theme colorscheme color scheme " + t.id + " " + t.name,
-                hint: t.id === Config.kuroScheme ? "active" : "",
-                run: { type: "kuroScheme", name: t.id }
-            })).concat(themes.items);
-        }
-        return list;
+    function fontFamilyItem(id, title, family) {
+        const selected = Config.kuroFonts.ui === family && Config.kuroFonts.terminal === family;
+        return {
+            id: id,
+            title: title,
+            sub: family + " · terminal, shell, and bar",
+            glyph: "Aa",
+            keys: "font typeface family terminal shell bar " + title + " " + family,
+            hint: selected ? "active" : "apply",
+            value: selected ? "active" : "",
+            active: selected,
+            run: {
+                type: "cmd",
+                cmd: [Config.kurogen, "set",
+                      "fonts.ui_family", family,
+                      "fonts.terminal_family", family]
+            }
+        };
     }
 
     function baseSections() {
@@ -45,24 +51,18 @@ Singleton {
             keys: "applications launchers desktop entries favorites recent",
             items: [
                 {
+                    id: "appFlea", title: "Flea",
+                    sub: "File manager",
+                    icon: "file://" + Config.home + "/.config/kuro/filemanager/packaging/com.thisisgm.flea.svg",
+                    glyph: g(0xF024B), keys: "flea file manager files browser",
+                    hint: "app",
+                    run: { type: "cmd", cmd: [Config.home + "/.config/hypr/scripts/toggle-filemanager.sh"] }
+                },
+                {
                     id: "appAll", title: "All applications",
                     sub: "Browse installed .desktop entries",
                     glyph: g(0xF003B), keys: "list browse programs",
                     hint: "apps", run: { type: "section", section: "apps" }
-                },
-                {
-                    id: "appInstall", title: "Install an application",
-                    sub: "fzpac  ·  fuzzy menu, then install in a floating terminal",
-                    glyph: g(0xF03D4), keys: "add get install package fzf",  // md-package_down
-                    hint: "fzpac", danger: true,
-                    run: { type: "tui", mode: "S" }
-                },
-                {
-                    id: "appRemove", title: "Uninstall an application",
-                    sub: "fzpac  ·  fuzzy menu, then remove in a floating terminal",
-                    glyph: g(0xF01B4), keys: "remove uninstall delete fzf",  // md-trash_can
-                    hint: "fzpac", danger: true,
-                    run: { type: "tui", mode: "R" }
                 },
                 {
                     id: "appDesktop", title: "Applications folder",
@@ -80,38 +80,7 @@ Singleton {
             sub: "Network, Bluetooth, sound and display",
             glyph: Icons.wifi,
             keys: "control devices network wifi bluetooth sound audio display brightness",
-            items: [
-                {
-                    id: "devProfile", title: "System profile",
-                    sub: "CPU, memory, temperature, uptime and battery",
-                    glyph: Icons.cpu, keys: "profile telemetry system cpu memory temperature",
-                    hint: "browse", run: { type: "enterSection", id: "dev-profile" }
-                },
-                {
-                    id: "devNetwork", title: "Network",
-                    sub: "Wi-Fi, scanning, Ethernet and saved networks",
-                    glyph: Icons.wifi, keys: "wifi wireless ethernet network nmcli internet",
-                    hint: "browse", run: { type: "enterSection", id: "dev-network" }
-                },
-                {
-                    id: "devBluetooth", title: "Bluetooth",
-                    sub: "Radio power and paired devices",
-                    glyph: Icons.bluetooth, keys: "bluetooth headset pair devices wireless",
-                    hint: "browse", run: { type: "enterSection", id: "dev-bluetooth" }
-                },
-                {
-                    id: "devSound", title: "Sound",
-                    sub: "Volume, mute, microphones and output devices",
-                    glyph: Icons.volume, keys: "sound audio volume speaker microphone mic mute wpctl",
-                    hint: "browse", run: { type: "enterSection", id: "dev-sound" }
-                },
-                {
-                    id: "devDisplay", title: "Display",
-                    sub: "Brightness, night light and external screens",
-                    glyph: Icons.brightness, keys: "display brightness night light screen monitor resolution",
-                    hint: "browse", run: { type: "enterSection", id: "dev-display" }
-                }
-            ]
+            items: []
         },
 
         // ── 03 Setup ─────────────────────────────────────────────────
@@ -301,14 +270,7 @@ Singleton {
                     sub: "pacman -Syu  ·  full system upgrade",
                     glyph: g(0xF0450), keys: "update upgrade system pacman syu",
                     hint: "terminal", danger: true, check: "command -v pacman >/dev/null",
-                    run: { type: "terminal", cmd: "sudo pacman -Syu; exec bash" }
-                },
-                {
-                    id: "pkgSearch", title: "Search repositories",
-                    sub: "fzpac  ·  fuzzy search with package info preview",
-                    glyph: g(0xF0349), keys: "search find repos package pacman fzf",  // md-magnify
-                    hint: "fzpac", check: "command -v pacman >/dev/null",
-                    run: { type: "tui", mode: "s" }
+                    run: { type: "popupTerminal", cmd: "sudo pacman -Syu; exec bash" }
                 },
                 {
                     id: "pkgInfo", title: "Package details",
@@ -318,39 +280,18 @@ Singleton {
                     run: { type: "tui", mode: "l" }
                 },
                 {
-                    id: "pkgHistory", title: "Package history",
-                    sub: "/var/log/pacman.log  ·  last 200 lines",
-                    glyph: g(0xF02DA), keys: "history log previous operations pacman",  // md-history
-                    hint: "terminal", check: "test -r /var/log/pacman.log",
-                    run: { type: "terminal", cmd: "tail -n 200 /var/log/pacman.log | less; exec bash" }
-                },
-                {
-                    id: "pkgOrphans", title: "Remove orphans",
-                    sub: "fzpac  ·  select unused dependencies to remove",
-                    glyph: g(0xF05B7), keys: "orphans unused dependencies clean pacman fzf",  // md-wrench
-                    hint: "fzpac", danger: true, check: "command -v pacman >/dev/null",
-                    run: { type: "tui", mode: "A" }
-                },
-                {
-                    id: "pkgCache", title: "Clean package cache",
-                    sub: "pacman -Sc  ·  remove old archives",
-                    glyph: g(0xF01B4), keys: "cache clean prune pacman disk",
-                    hint: "terminal", danger: true, check: "command -v pacman >/dev/null",
-                    run: { type: "terminal", cmd: "sudo pacman -Sc; exec bash" }
-                },
-                {
                     id: "flatUpdate", title: "Flatpak update",
                     sub: "flatpak update  ·  refresh all Flatpaks",
                     glyph: g(0xF324), keys: "flatpak update upgrade",  // linux-flathub
                     hint: "terminal", danger: true, check: "command -v flatpak >/dev/null",
-                    run: { type: "terminal", cmd: "flatpak update; exec bash" }
+                    run: { type: "popupTerminal", cmd: "flatpak update; exec bash" }
                 },
                 {
                     id: "flatList", title: "List Flatpaks",
                     sub: "flatpak list  ·  installed applications",
                     glyph: g(0xF324), keys: "flatpak list installed",
                     hint: "terminal", check: "command -v flatpak >/dev/null",
-                    run: { type: "terminal", cmd: "flatpak list --app; exec bash" }
+                    run: { type: "popupTerminal", cmd: "flatpak list --app; exec bash" }
                 }
             ]
         },
@@ -358,9 +299,9 @@ Singleton {
         // ── 06 System ────────────────────────────────────────────────
         {
             id: "system", num: "06", label: "System",
-            sub: "Notifications, clipboard, session and maintenance",
+            sub: "Notifications, clipboard and maintenance",
             glyph: g(0xF048B),                                   // md-server
-            keys: "system hardware services processes storage logs maintenance notifications clipboard power",
+            keys: "system hardware services processes storage logs maintenance notifications clipboard",
             items: [
                 {
                     id: "sysOverview", title: "System overview",
@@ -387,37 +328,31 @@ Singleton {
                     hint: "browse", run: { type: "enterSection", id: "sys-keybinds" }
                 },
                 {
-                    id: "sysPowerMenu", title: "Power and session",
-                    sub: "Battery, power profiles, lock, suspend, restart",
-                    glyph: Icons.power, keys: "power battery profile lock suspend logout reboot shutdown",
-                    hint: "browse", run: { type: "enterSection", id: "sys-power" }
-                },
-                {
                     id: "sysInfo", title: "Hardware info",
                     sub: "fastfetch  ·  CPU, GPU, RAM, disks",
                     glyph: g(0xF0EE0), keys: "hardware cpu gpu ram memory disks fastfetch",  // md-cpu_64_bit
                     hint: "terminal", check: "command -v fastfetch >/dev/null",
-                    run: { type: "terminal", cmd: "fastfetch; exec bash" }
+                    run: { type: "popupTerminal", cmd: "fastfetch; exec bash" }
                 },
                 {
                     id: "sysProcesses", title: "Processes",
                     sub: "htop  ·  running processes and load",
                     glyph: g(0xF07B1), keys: "processes tasks htop top load monitor",  // md-chart_line_variant
                     hint: "terminal", check: "command -v htop >/dev/null",
-                    run: { type: "terminal", cmd: "htop" }
+                    run: { type: "popupTerminal", cmd: "htop" }
                 },
                 {
                     id: "sysServices", title: "Services",
                     sub: "systemctl --user  ·  list and manage units",
                     glyph: g(0xF1460), keys: "services systemd systemctl units start stop enable",
                     hint: "terminal", check: "command -v systemctl >/dev/null",
-                    run: { type: "terminal", cmd: "systemctl --user list-units --type=service --no-pager | less; exec bash" }
+                    run: { type: "popupTerminal", cmd: "systemctl --user list-units --type=service --no-pager | less; exec bash" }
                 },
                 {
                     id: "sysStorage", title: "Disk usage",
                     sub: "df -h  ·  filesystem usage and mounts",
                     glyph: g(0xF02CA), keys: "storage disk usage mounts df space",  // md-harddisk
-                    hint: "terminal", run: { type: "terminal", cmd: "df -h; echo; lsblk -o NAME,SIZE,TYPE,MOUNTPOINT; exec bash" }
+                    hint: "terminal", run: { type: "popupTerminal", cmd: "df -h; echo; lsblk -o NAME,SIZE,TYPE,MOUNTPOINT; exec bash" }
                 },
                 {
                     id: "sysLogs", title: "System logs",
@@ -439,20 +374,6 @@ Singleton {
                     glyph: g(0xF003C), keys: "backup archive configs dotfiles",
                     hint: "terminal",
                     run: { type: "terminal", cmd: "mkdir -p \"$HOME/Backups\"; tar -czf \"$HOME/Backups/configs-$(date +%Y%m%d).tar.gz\" -C \"$HOME\" .config .local/bin 2>/dev/null; echo 'Backup done.'; exec bash" }
-                },
-                {
-                    id: "sysReboot", title: "Reboot",
-                    sub: "Restart the computer now",
-                    glyph: Icons.reboot, keys: "reboot restart system power",
-                    hint: "power", danger: true,
-                    run: { type: "cmd", cmd: ["systemctl", "reboot"] }
-                },
-                {
-                    id: "sysShutdown", title: "Shut down",
-                    sub: "Power off the computer now",
-                    glyph: Icons.power, keys: "shutdown poweroff off system power",
-                    hint: "power", danger: true,
-                    run: { type: "cmd", cmd: ["systemctl", "poweroff"] }
                 }
             ]
         },
@@ -466,21 +387,21 @@ Singleton {
             items: [
                 {
                     id: "styleThemes", title: "Themes",
-                    sub: "Colorschemes from ~/.config/kuro/themes",
+                    sub: "Open the theme picker",
                     glyph: Icons.palette, keys: "themes colorscheme palette colors",
-                    hint: "browse", run: { type: "enterSection", id: "style-themes" }
+                    hint: "picker", run: { type: "stylePicker", mode: "theme" }
                 },
                 {
                     id: "styleFontsMenu", title: "Fonts",
-                    sub: "UI and terminal family and size",
-                    glyph: "Aa", keys: "fonts typography ui terminal family size",
+                    sub: "Terminal, shell, and bar font family",
+                    glyph: "Aa", keys: "fonts typography typeface terminal shell bar nerd font",
                     hint: "browse", run: { type: "enterSection", id: "style-fonts" }
                 },
                 {
                     id: "styleWalls", title: "Wallpapers",
-                    sub: "Browse, pick or shuffle your backgrounds",
+                    sub: "Open the wallpaper picker",
                     glyph: Icons.image, keys: "wallpapers background image gallery",
-                    hint: "browse", run: { type: "enterSection", id: "style-wallpapers" }
+                    hint: "picker", run: { type: "stylePicker", mode: "wallpaper" }
                 },
                 {
                     id: "styleLockscreen", title: "Lockscreen styles",
@@ -490,8 +411,8 @@ Singleton {
                 },
                 {
                     id: "styleAppearance", title: "Appearance",
-                    sub: "Gaps, borders, rounding, blur, animations and bar layouts",
-                    glyph: Icons.settings, keys: "appearance gaps border rounding blur animations bar layout",
+                    sub: "Blur, animations and bar layouts",
+                    glyph: Icons.settings, keys: "appearance blur animations bar layout",
                     hint: "browse", run: { type: "enterSection", id: "style-appearance" }
                 },
                 {
@@ -510,12 +431,21 @@ Singleton {
             ]
         },
 
+        // ── 08 Power ─────────────────────────────────────────────────
+        {
+            id: "power", num: "08", label: "Power",
+            sub: "Lock, suspend, log out, restart and shut down",
+            glyph: Icons.power,
+            keys: "power session battery profile lock suspend logout reboot restart shutdown poweroff",
+            items: []
+        },
+
         // ─────────────────────────────────────────────────────────────
         // Control submenus (rows come from services/LauncherControls.qml)
         // ─────────────────────────────────────────────────────────────
         {
             id: "dev-profile", label: "System profile", hidden: true,
-            sub: "Live system information", glyph: Icons.cpu,
+            sub: "Live CPU, memory and GPU monitor", glyph: Icons.cpu,
             keys: "system profile cpu memory temperature uptime battery host kernel",
             items: []
         },
@@ -565,122 +495,31 @@ Singleton {
             keys: "keybinds shortcuts keys hotkeys binds",
             items: []
         },
-        {
-            id: "sys-power", label: "Power", hidden: true,
-            sub: "Battery, profiles and session", glyph: Icons.power,
-            keys: "power battery profile lock suspend logout restart shutdown session",
-            items: []
-        },
-
         // ─────────────────────────────────────────────────────────────
         // Style submenus
         // ─────────────────────────────────────────────────────────────
         {
-            id: "style-themes", label: "Themes", hidden: true,
-            sub: "Colorschemes", glyph: Icons.palette,
-            keys: "themes colorscheme palette colors",
-            items: [
-                {
-                    id: "themesFolder", title: "Open themes folder",
-                    sub: "~/.config/kuro/themes",
-                    glyph: Icons.palette, keys: "themes folder files edit toml",
-                    hint: "files", check: "test -d \"" + Config.kuroThemesDir + "\"",
-                    run: { type: "url", url: "file://" + Config.kuroThemesDir }
-                }
-            ]
-        },
-        {
             id: "style-fonts", label: "Fonts", hidden: true,
-            sub: "UI and terminal typography", glyph: "Aa",
-            keys: "fonts typography ui terminal family size",
+            sub: "Terminal, shell, and bar typeface", glyph: "Aa",
+            keys: "fonts typography typeface terminal shell bar family nerd font",
             items: [
+                fontFamilyItem("fontJetBrains", "JetBrains Mono", "JetBrainsMono Nerd Font"),
+                fontFamilyItem("fontCascadia", "Cascadia Code", "CaskaydiaCove Nerd Font"),
+                fontFamilyItem("fontFira", "Fira Code", "FiraCode Nerd Font"),
+                fontFamilyItem("fontIosevka", "Iosevka", "Iosevka Nerd Font"),
                 {
-                    id: "fontUi13", title: "UI size 13", sub: "Smaller shell text",
-                    glyph: "Aa", keys: "ui font size 13 small",
-                    hint: Config.kuroFonts.uiSize === 13 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.ui_size", "13"] }
-                },
-                {
-                    id: "fontUi14", title: "UI size 14", sub: "Compact shell text",
-                    glyph: "Aa", keys: "ui font size 14 compact",
-                    hint: Config.kuroFonts.uiSize === 14 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.ui_size", "14"] }
-                },
-                {
-                    id: "fontUi15", title: "UI size 15", sub: "Default shell text",
-                    glyph: "Aa", keys: "ui font size 15 default",
-                    hint: Config.kuroFonts.uiSize === 15 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.ui_size", "15"] }
-                },
-                {
-                    id: "fontUi16", title: "UI size 16", sub: "Larger shell text",
-                    glyph: "Aa", keys: "ui font size 16 large",
-                    hint: Config.kuroFonts.uiSize === 16 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.ui_size", "16"] }
-                },
-                {
-                    id: "fontUi17", title: "UI size 17", sub: "Extra large shell text",
-                    glyph: "Aa", keys: "ui font size 17 larger",
-                    hint: Config.kuroFonts.uiSize === 17 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.ui_size", "17"] }
-                },
-                {
-                    id: "fontUi18", title: "UI size 18", sub: "Largest shell text",
-                    glyph: "Aa", keys: "ui font size 18 largest",
-                    hint: Config.kuroFonts.uiSize === 18 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.ui_size", "18"] }
-                },
-                {
-                    id: "fontTerm11", title: "Terminal size 11", sub: "kitty font size",
-                    glyph: g(0xF489), keys: "terminal font size 11 kitty",
-                    hint: Config.kuroFonts.terminalSize === 11 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.terminal_size", "11"] }
-                },
-                {
-                    id: "fontTerm115", title: "Terminal size 11.5", sub: "Default kitty size",
-                    glyph: g(0xF489), keys: "terminal font size 11.5 kitty",
-                    hint: Config.kuroFonts.terminalSize === 11.5 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.terminal_size", "11.5"] }
-                },
-                {
-                    id: "fontTerm12", title: "Terminal size 12", sub: "Larger kitty text",
-                    glyph: g(0xF489), keys: "terminal font size 12 kitty",
-                    hint: Config.kuroFonts.terminalSize === 12 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.terminal_size", "12"] }
-                },
-                {
-                    id: "fontTerm125", title: "Terminal size 12.5", sub: "Large kitty text",
-                    glyph: g(0xF489), keys: "terminal font size 12.5 kitty",
-                    hint: Config.kuroFonts.terminalSize === 12.5 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.terminal_size", "12.5"] }
-                },
-                {
-                    id: "fontTerm13", title: "Terminal size 13", sub: "Largest kitty text",
-                    glyph: g(0xF489), keys: "terminal font size 13 kitty",
-                    hint: Config.kuroFonts.terminalSize === 13 ? "active" : "apply",
-                    run: { type: "cmd", cmd: [Config.kurogen, "set", "fonts.terminal_size", "13"] }
-                },
-                {
-                    id: "fontsEdit", title: "Edit fonts in kuro.toml",
-                    sub: "Font families and sizes live in [fonts]",
-                    glyph: g(0xF0DC9), keys: "fonts family terminal ui config edit toml",
-                    hint: "config", check: "test -f \"$HOME/.config/kuro/kuro.toml\"",
-                    run: { type: "url", url: "file://" + Config.kuroConfig }
-                },
-                {
-                    id: "fontsKitty", title: "Terminal appearance",
-                    sub: "Generated kitty config  ·  ~/.config/kitty/kuro.conf",
-                    glyph: g(0xF489), keys: "kitty terminal appearance colors font config",
-                    hint: "config", check: "test -f \"$HOME/.config/kitty/kuro.conf\"",
-                    run: { type: "url", url: "file://" + Config.home + "/.config/kitty/kuro.conf" }
+                    id: "fontDefault", title: "Reset to default",
+                    sub: "JetBrains Mono Nerd Font · terminal, shell, and bar",
+                    glyph: "Aa", keys: "fonts reset default original JetBrains Mono Nerd Font",
+                    hint: "reset",
+                    run: {
+                        type: "cmd",
+                        cmd: [Config.kurogen, "set",
+                              "fonts.ui_family", "JetBrainsMono Nerd Font",
+                              "fonts.terminal_family", "JetBrainsMono Nerd Font"]
+                    }
                 }
             ]
-        },
-        {
-            id: "style-wallpapers", label: "Wallpapers", hidden: true,
-            sub: "Background images", glyph: Icons.image,
-            keys: "wallpaper background image gallery pick random folder",
-            items: []
         },
         {
             id: "style-lockscreen", label: "Lockscreen", hidden: true,
@@ -708,6 +547,30 @@ Singleton {
             sub: "Hyprland and bar appearance", glyph: Icons.settings,
             keys: "appearance gaps border rounding blur animations bar layout colorscheme",
             items: []
+        },
+        {
+            id: "appearance-opacity", label: "Opacity", hidden: true,
+            sub: "Glass or opaque surfaces", glyph: Icons.settings, keys: "opacity glass opaque", items: []
+        },
+        {
+            id: "appearance-border", label: "Border", hidden: true,
+            sub: "Sharp or rounded corners", glyph: Icons.settings, keys: "border sharp rounded", items: []
+        },
+        {
+            id: "appearance-panels", label: "Panels", hidden: true,
+            sub: "Dock and panel settings", glyph: Icons.overview, keys: "panels dock bar", items: []
+        },
+        {
+            id: "appearance-dock-settings", label: "Dock settings", hidden: true,
+            sub: "Dock visibility and autohide", glyph: Icons.overview, keys: "dock taskbar", items: []
+        },
+        {
+            id: "appearance-panel-settings", label: "Panel settings", hidden: true,
+            sub: "Bar visibility and layout", glyph: Icons.overview, keys: "panel bar", items: []
+        },
+        {
+            id: "appearance-animations", label: "Animations", hidden: true,
+            sub: "Turn animations on or off", glyph: Icons.settings, keys: "animations motion", items: []
         }
         ];
     }

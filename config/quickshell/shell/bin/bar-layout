@@ -1,7 +1,7 @@
 #!/bin/sh
 # Pick a Quickshell bar layout via rofi (replacement for waybar-rofi.sh).
 #   bar-layout          rofi menu
-#   bar-layout cozy     jump straight to a layout
+#   bar-layout float    jump straight to a layout
 #   bar-layout next     next layout
 #
 # Save to ~/.local/bin/bar-layout then: chmod +x ~/.local/bin/bar-layout

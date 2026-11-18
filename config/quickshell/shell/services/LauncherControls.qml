@@ -63,47 +63,72 @@ Singleton {
         };
     }
 
+    function controlItems() {
+        const n = Network;
+        const a = Audio;
+        const items = [
+            {
+                title: "System profile",
+                sub: "Open the live CPU, memory, disk, Wi-Fi and GPU monitor",
+                glyph: Icons.cpu,
+                keys: "profile telemetry system monitor cpu memory disk wifi gpu",
+                hint: "open",
+                run: { type: "cmd", cmd: ["qs", "-c", "shell", "ipc", "call", "monitor", "open"] }
+            },
+            toggle({
+                title: "Wi-Fi",
+                sub: n.ssid !== "" ? "Connected to " + n.ssid
+                    : n.enabled ? "Wireless network is on" : "Wireless network is off",
+                glyph: n.enabled ? Icons.wifiStrength[Math.min(4, Math.floor(n.wifiSignal / 20))] : Icons.wifiOff,
+                keys: "wifi wireless network radio nmcli internet",
+                value: onoff(n.enabled),
+                active: n.enabled,
+                run: { type: "callback", fn: () => n.toggle() }
+            }),
+            toggle({
+                title: "Bluetooth",
+                sub: !Bluetooth.available ? "No adapter"
+                    : Bluetooth.device !== "" ? "Connected to " + Bluetooth.device
+                    : Bluetooth.powered ? "Bluetooth is on" : "Bluetooth is off",
+                glyph: Bluetooth.powered ? Icons.bluetooth : Icons.bluetoothOff,
+                keys: "bluetooth headset pair devices wireless",
+                value: Bluetooth.available ? onoff(Bluetooth.powered) : "unavailable",
+                active: Bluetooth.powered,
+                run: { type: "callback", fn: () => Bluetooth.toggle() }
+            }),
+            {
+                title: "Sound",
+                sub: "Volume, microphone and output devices",
+                glyph: a.muted ? Icons.volumeOff : Icons.volumeForLevel(a.volume, false),
+                keys: "sound audio volume speaker microphone mic mute wpctl",
+                hint: "open",
+                value: a.muted ? "muted" : pct(a.volume),
+                active: !a.muted,
+                run: { type: "enterSection", id: "dev-sound" }
+            },
+            {
+                title: "Display",
+                sub: "Brightness, night light and external screens",
+                glyph: Icons.brightness,
+                keys: "display brightness night light screen monitor resolution",
+                hint: "open",
+                value: Brightness.available ? pct(Brightness.value) : "display",
+                run: { type: "enterSection", id: "dev-display" }
+            }
+        ];
+        return items;
+    }
+
     // ── Profile / system information ─────────────────────────────────
     function profileItems() {
-        const s = SystemStats;
-        const si = SystemInfo;
-        const b = Battery;
-        const down = s.formatRate(s.rxRate);
-        const up = s.formatRate(s.txRate);
-        const out = [
-            info("CPU", Math.round(s.cpu * 100) + "%", "cpu processor load usage",
-                 "Live CPU utilisation"),
-            info("Memory", Math.round(s.mem * 100) + "%  ·  " +
-                 s.formatKiB(s.memUsed) + " / " + s.formatKiB(s.memTotal),
-                 "memory ram usage", "Live memory usage"),
-            info("Temperature", s.temp > 0 ? s.temp + "°C" : "—",
-                 "temperature temp cpu heat", "CPU temperature"),
-            info("Network speed", down.v + " " + down.u + " ↓  ·  " +
-                 up.v + " " + up.u + " ↑",
-                 "network speed traffic download upload", "Current throughput"),
-            info("Uptime", si.uptime, "uptime boot", "Time since boot"),
-            info("Host", si.user + "@" + si.host, "host hostname user",
-                 "Current machine"),
-            info("Kernel", si.kernel, "kernel linux version", "Running kernel"),
-            info("System", si.os, "os distro system version", "Distribution"),
-            info("Compositor", si.compositor, "compositor hyprland version",
-                 "Window compositor"),
-            info("Resolution", si.resolution, "resolution monitor screen size",
-                 "Primary display mode")
-        ];
-        if (b.available) {
-            out.push(info("Battery",
-                b.percent + "%  ·  " + b.status.toLowerCase() +
-                (b.timeLeft !== "" ? "  ·  " + b.timeLeft : ""),
-                "battery charge level power", "Battery state"));
-        }
-        out.push({
-            title: "Refresh", sub: "Update all readings now",
-            glyph: Icons.refresh, keys: "refresh update telemetry",
-            hint: "instant", keepOpen: true,
-            run: { type: "callback", fn: () => Launcher.refreshLive() }
-        });
-        return out;
+        return [{
+            title: "Open system monitor",
+            sub: "Live CPU, memory, disk, Wi-Fi and GPU graphs",
+            glyph: Icons.cpu,
+            keys: "system monitor profile cpu memory disk wifi gpu live graph",
+            hint: "open",
+            run: { type: "cmd", cmd: ["qs", "-c", "shell", "ipc", "call", "monitor", "open"] }
+        }];
     }
 
     // ── Network (nmcli) ──────────────────────────────────────────────
@@ -373,129 +398,96 @@ Singleton {
 
     // ── Appearance ───────────────────────────────────────────────────
     function appearanceItems() {
-        const out = [];
+        return [
+            { title: "Opacity", sub: "Glass or opaque surfaces", glyph: g(0xF0A07), keys: "opacity glass opaque blur", run: { type: "enterSection", id: "appearance-opacity" } },
+            { title: "Border", sub: "Sharp or rounded corners", glyph: Icons.settings, keys: "border sharp rounded corners", run: { type: "enterSection", id: "appearance-border" } },
+            { title: "Panels", sub: "Dock and panel settings", glyph: Icons.overview, keys: "panels dock bar settings", run: { type: "enterSection", id: "appearance-panels" } },
+            { title: "Animations", sub: "Turn animations on or off", glyph: Icons.settings, keys: "animations motion effects", run: { type: "enterSection", id: "appearance-animations" } }
+        ];
+    }
+
+    function opacityItems() {
         const h = Hypr;
+        return [
+            { title: "Glass", sub: "Blurred translucent surfaces", glyph: g(0xF0A07), keys: "glass blur translucent appearance", hint: h.blur ? "active" : "enable", value: h.blur ? "active" : "", active: h.blur, keepOpen: true, run: { type: "callback", fn: () => root.setOpacityMode(true) } },
+            { title: "Opaque", sub: "Solid surfaces without blur", glyph: Icons.settings, keys: "opaque solid no blur appearance", hint: !h.blur ? "active" : "enable", value: !h.blur ? "active" : "", active: !h.blur, keepOpen: true, run: { type: "callback", fn: () => root.setOpacityMode(false) } }
+        ];
+    }
 
-        const hyprSlider = (title, key, lo, hi, sub, keys) => slider({
-            title: title, value: String(h[key]),
-            sub: (sub ?? "") + "  ·  ←/→ or wheel adjust",
-            glyph: Icons.settings, keys: keys,
-            adjust: d => h.set(key, clamp(h[key] + d, lo, hi)),
-            run: { type: "callback", fn: () => h.set(key, clamp(h[key] + 1, lo, hi)) }
-        });
+    function borderItems() {
+        const h = Hypr;
+        return [
+            { title: "Sharp", sub: "Square window corners", glyph: Icons.settings, keys: "sharp square corners border appearance", hint: h.rounding === 0 ? "active" : "enable", value: h.rounding === 0 ? "active" : "", active: h.rounding === 0, keepOpen: true, run: { type: "callback", fn: () => h.set("rounding", 0) } },
+            { title: "Rounded", sub: "Rounded window corners", glyph: Icons.settings, keys: "round rounded corners border appearance", hint: h.rounding > 0 ? "active" : "enable", value: h.rounding > 0 ? "active" : "", active: h.rounding > 0, keepOpen: true, run: { type: "callback", fn: () => h.set("rounding", 10) } }
+        ];
+    }
 
-        out.push(hyprSlider("Gaps in", "gapsIn", 0, 30, "Space between windows",
-                            "gaps in spacing windows hyprland"));
-        out.push(hyprSlider("Gaps out", "gapsOut", 0, 60, "Space around the edge",
-                            "gaps out spacing screen hyprland"));
-        out.push(hyprSlider("Border size", "borderSize", 0, 8, "Window border width",
-                            "border width window hyprland"));
-        out.push(hyprSlider("Rounding", "rounding", 0, 30, "Window corner radius",
-                            "rounding corners radius window hyprland"));
+    function panelItems() {
+        return [
+            { title: "Dock settings", sub: "Visibility and autohide", glyph: Icons.overview, keys: "dock taskbar settings", run: { type: "enterSection", id: "appearance-dock-settings" } },
+            { title: "Panel settings", sub: "Bar visibility and layout", glyph: Icons.overview, keys: "panel bar settings", run: { type: "enterSection", id: "appearance-panel-settings" } }
+        ];
+    }
 
-        out.push(toggle({
-            title: "Blur", value: onoff(h.blur),
-            sub: "decoration:blur:enabled",
-            glyph: g(0xF0A07), keys: "blur transparency decoration",
-            run: { type: "callback", fn: () => h.set("blur", !h.blur) }
-        }));
-        out.push(toggle({
-            title: "Animations", value: onoff(h.animations),
-            sub: "animations:enabled",
-            glyph: Icons.settings, keys: "animations motion effects",
-            run: { type: "callback", fn: () => h.set("animations", !h.animations) }
-        }));
+    function setOpacityMode(glass) {
+        Hypr.set("blur", glass);
+        Quickshell.execDetached([
+            Config.kurogen, "set", "terminal.opacity", glass ? "0.78" : "1.0"
+        ]);
+    }
 
-        out.push(toggle({
-            title: "Show bar", value: onoff(BarState.shown),
-            sub: "Layout: " + BarState.current,
-            glyph: Icons.overview, keys: "bar status bar show hide",
-            run: { type: "callback", fn: () => BarState.shown = !BarState.shown }
-        }));
+    function dockSettingItems() {
+        const out = [];
         for (const mode of [
             { id: "enabled", title: "Dock: Always show", sub: "Visible and reserves screen space" },
             { id: "disabled", title: "Dock: Off", sub: "Keep the dock hidden" },
             { id: "autohide", title: "Dock: Autohide", sub: "Reveal it at the bottom screen edge" }
-        ]) {
-            out.push({
-                title: mode.title, sub: mode.sub,
-                glyph: Icons.overview, keys: "dock taskbar windows bottom show hide autohide",
-                hint: DockState.mode === mode.id ? "active" : "set",
-                value: DockState.mode === mode.id ? "active" : "",
-                active: DockState.mode === mode.id, keepOpen: true,
-                run: { type: "callback", fn: () => DockState.setMode(mode.id) }
-            });
-        }
+        ]) out.push({
+            title: mode.title, sub: mode.sub, glyph: Icons.overview,
+            keys: "dock taskbar windows bottom show hide autohide",
+            hint: DockState.mode === mode.id ? "active" : "set",
+            value: DockState.mode === mode.id ? "active" : "",
+            active: DockState.mode === mode.id, keepOpen: true,
+            run: { type: "callback", fn: () => DockState.setMode(mode.id) }
+        });
+        return out;
+    }
 
+    function panelSettingItems() {
+        const out = [{
+            title: "Show bar", sub: "Show or hide the top panel",
+            glyph: Icons.overview, keys: "bar panel status show hide",
+            hint: BarState.shown ? "active" : "show", value: BarState.shown ? "active" : "",
+            active: BarState.shown, keepOpen: true,
+            run: { type: "callback", fn: () => BarState.shown = !BarState.shown }
+        }];
         for (const name of BarState.names) {
             const l = BarState.layouts[name];
             out.push({
-                title: name + " bar", sub: l.style + "  ·  " + l.height + "px",
-                glyph: Icons.overview, keys: name + " bar layout " + l.style,
+                title: name + " panel", sub: l.style + "  ·  " + l.height + "px",
+                glyph: Icons.overview, keys: name + " panel bar layout " + l.style,
                 hint: BarState.current === name ? "active" : "layout",
                 value: BarState.current === name ? "active" : "",
                 active: BarState.current === name, keepOpen: true,
                 run: { type: "barSet", name: name }
             });
         }
-
-        out.push({
-            title: "Square corners", sub: "Set rounding to 0",
-            glyph: g(0xF0764), keys: "square sharp corners rounding zero",
-            hint: "hypr", keepOpen: true,
-            run: { type: "hyprSet", values: [{ key: "rounding", value: 0 }] }
-        });
-        out.push({
-            title: "Reset appearance",
-            sub: "Default gaps, border, rounding, blur and animations",
-            glyph: Icons.refresh, keys: "reset default appearance hyprland",
-            hint: "reset", danger: true, keepOpen: true,
-            run: { type: "appearanceReset" }
-        });
-
-        out.push({
-            title: "Colorscheme", value: Config.kuroSchemeName,
-            sub: "Open the themes list",
-            glyph: Icons.palette, keys: "colorscheme theme palette colors",
-            hint: "themes", keepOpen: true,
-            run: { type: "enterSection", id: "style-themes" }
-        });
         return out;
     }
 
-    // ── Wallpapers ───────────────────────────────────────────────────
-    function wallpaperItems() {
-        const out = [{
-            title: "Wallpaper picker", sub: "Open the full-screen chooser",
-            glyph: Icons.image, keys: "wallpaper picker choose image",
-            hint: "app", check: "command -v quickshell >/dev/null",
-            run: { type: "shell", cmd: Config.wallpaperPicker }
-        }, {
-            title: "Random wallpaper", sub: "Pick a random image from the folder",
-            glyph: Icons.refresh, keys: "random wallpaper shuffle next",
-            hint: "instant", keepOpen: true,
-            run: { type: "wallRandom" }
-        }, {
-            title: "Wallpaper folder", sub: Config.wallpaperDir.replace(Config.home, "~"),
-            glyph: Icons.image, keys: "wallpaper folder open files",
-            hint: "files", check: "test -d \"" + Config.wallpaperDir + "\"",
-            run: { type: "url", url: "file://" + Config.wallpaperDir }
-        }, info("Current wallpaper",
-                Wallpaper.current !== "" ? Wallpaper.fileName(Wallpaper.current) : "none",
-                "wallpaper current background", "Enter copies the path")];
-
-        for (const p of Wallpaper.images.slice(0, 60)) {
-            const isCurrent = Wallpaper.current === p;
-            out.push({
-                title: Wallpaper.fileName(p),
-                sub: isCurrent ? "Current wallpaper" : "Apply this wallpaper",
-                icon: "file://" + p, glyph: Icons.image,
-                keys: Wallpaper.fileName(p) + " wallpaper background image",
-                hint: isCurrent ? "current" : "wall",
-                active: isCurrent,
-                run: { type: "wall", path: p }
-            });
-        }
+    function animationItems() {
+        const h = Hypr;
+        const out = [];
+        for (const enabled of [true, false]) out.push({
+            title: enabled ? "On" : "Off",
+            sub: enabled ? "Enable motion and transitions" : "Disable motion and transitions",
+            glyph: Icons.settings,
+            keys: "animations " + (enabled ? "on enable" : "off disable") + " motion effects",
+            hint: h.animations === enabled ? "active" : "set",
+            value: h.animations === enabled ? "active" : "",
+            active: h.animations === enabled, keepOpen: true,
+            run: { type: "callback", fn: () => h.set("animations", enabled) }
+        });
         return out;
     }
 
@@ -589,47 +581,7 @@ Singleton {
 
     // ── Power & session ──────────────────────────────────────────────
     function powerItems() {
-        const b = Battery;
-        const out = [];
-
-        if (b.available) {
-            out.push(info("Battery",
-                b.percent + "%  ·  " + b.status.toLowerCase() +
-                (b.watts > 0 ? "  ·  " + b.watts.toFixed(1) + "W" : "") +
-                (b.timeLeft !== "" ? "  ·  " + b.timeLeft : ""),
-                "battery charge power", "Battery state"));
-        }
-        if (MouseBattery.available) {
-            out.push(info("Mouse battery",
-                MouseBattery.level + "%" +
-                (MouseBattery.charging ? "  ·  charging" : "") +
-                (MouseBattery.asleep ? "  ·  asleep" : ""),
-                "mouse battery", "Wireless mouse"));
-        }
-        out.push(info("Host", SystemInfo.user + "@" + SystemInfo.host +
-                      "  ·  up " + SystemInfo.uptime,
-                      "host uptime", "Machine and uptime"));
-
-        for (const p of PowerProfile.profiles) {
-            out.push({
-                title: PowerProfile.pretty(p),
-                sub: "Power profile",
-                glyph: p === "performance" ? Icons.speed
-                    : p === "power-saver" ? Icons.leaf : Icons.balance,
-                keys: p + " power profile performance battery",
-                hint: PowerProfile.current === p ? "active" : "profile",
-                value: PowerProfile.current === p ? "active" : "",
-                active: PowerProfile.current === p, keepOpen: true,
-                run: { type: "callback", fn: () => PowerProfile.set(p) }
-            });
-        }
-        if (!PowerProfile.available) {
-            out.push(info("Power profile", "powerprofilesctl not found",
-                          "power profile unavailable",
-                          "Install power-profiles-daemon"));
-        }
-
-        out.push({
+        return [{
             title: "Lock", sub: "Start the lock screen",
             glyph: Icons.lock, keys: "lock screen session",
             hint: "session", check: "command -v qs >/dev/null",
@@ -653,7 +605,6 @@ Singleton {
             glyph: Icons.power, keys: "shutdown power off session",
             hint: "power", danger: true,
             run: { type: "cmd", cmd: ["systemctl", "poweroff"] }
-        });
-        return out;
+        }];
     }
 }

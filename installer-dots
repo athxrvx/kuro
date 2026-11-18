@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'USAGE'
+Usage: ./installer-dots [--dry-run]
+
+Backs up matching existing paths under ~/kuro-backups/<timestamp>, then installs
+this repository's config/ into ~/.config, home/ into ~, and local/bin/ into
+~/.local/bin. No packages are installed and no root privileges are used.
+USAGE
+}
+
+dry_run=0
+case "${1:-}" in
+    "") ;;
+    --dry-run) dry_run=1 ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
+
+bundle_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+backup_root="$HOME/kuro-backups/$(date +%Y%m%d-%H%M%S)"
+backup_made=0
+
+backup_path() {
+    local destination="$1" relative="$2"
+    if [[ -e "$destination" || -L "$destination" ]]; then
+        if (( dry_run )); then
+            printf 'Would back up %s to %s\n' "$destination" "$backup_root/$relative"
+        else
+            mkdir -p "$(dirname -- "$backup_root/$relative")"
+            cp -a -- "$destination" "$backup_root/$relative"
+            backup_made=1
+        fi
+    fi
+}
+
+install_tree() {
+    local source="$1" destination="$2" relative="$3"
+    [[ -d "$source" ]] || return 0
+    backup_path "$destination" "$relative"
+    if (( dry_run )); then
+        printf 'Would install %s to %s\n' "$source" "$destination"
+    else
+        mkdir -p "$destination"
+        cp -a -- "$source/." "$destination/"
+    fi
+}
+
+install_entry() {
+    local source="$1" destination="$2" relative="$3"
+    backup_path "$destination" "$relative"
+    if (( dry_run )); then
+        printf 'Would install %s to %s\n' "$source" "$destination"
+    else
+        mkdir -p "$(dirname -- "$destination")"
+        cp -a -- "$source" "$destination"
+    fi
+}
+
+[[ -d "$bundle_dir/config" ]] || { echo 'Bundle is missing config/.' >&2; exit 1; }
+while IFS= read -r -d '' source; do
+    name="${source##*/}"
+    install_tree "$source" "$config_home/$name" ".config/$name"
+done < <(find "$bundle_dir/config" -mindepth 1 -maxdepth 1 -print0 | sort -z)
+
+if [[ -d "$bundle_dir/themes/Orchis-Dark" ]]; then
+    theme_dir="$HOME/.local/share/themes/Orchis-Dark"
+    install_tree "$bundle_dir/themes/Orchis-Dark" "$theme_dir" "themes/Orchis-Dark"
+    if (( ! dry_run )); then
+        gtk4_dir="$config_home/gtk-4.0"
+        mkdir -p "$gtk4_dir"
+        for name in gtk.css gtk-dark.css assets; do
+            [[ -e "$theme_dir/gtk-4.0/$name" ]] || continue
+            ln -sfn -- "$theme_dir/gtk-4.0/$name" "$gtk4_dir/$name"
+        done
+    else
+        printf 'Would link GTK 4 and libadwaita styles to %s\n' "$theme_dir/gtk-4.0"
+    fi
+fi
+
+if [[ -d "$bundle_dir/home" ]]; then
+    while IFS= read -r -d '' source; do
+        name="${source##*/}"
+        install_entry "$source" "$HOME/$name" "$name"
+    done < <(find "$bundle_dir/home" -mindepth 1 -maxdepth 1 -type f -print0 | sort -z)
+fi
+
+if [[ -d "$bundle_dir/local/bin" ]]; then
+    while IFS= read -r -d '' source; do
+        name="${source##*/}"
+        install_entry "$source" "$HOME/.local/bin/$name" ".local/bin/$name"
+    done < <(find "$bundle_dir/local/bin" -mindepth 1 -maxdepth 1 -print0 | sort -z)
+fi
+
+for name in controlcenter bar-layout; do
+    target="$config_home/quickshell/shell/bin/$name"
+    if [[ -e "$target" ]]; then
+        if (( dry_run )); then
+            printf 'Would link %s to %s\n' "$HOME/.local/bin/$name" "$target"
+        else
+            mkdir -p "$HOME/.local/bin"
+            ln -sfn -- "$target" "$HOME/.local/bin/$name"
+        fi
+    fi
+done
+
+if (( dry_run )); then
+    echo 'Dry run complete; no files were changed.'
+else
+    (( backup_made )) && echo "Existing paths backed up to: $backup_root"
+    echo 'Dotfiles installed. Review README-INSTALL.md for setup notes.'
+fi

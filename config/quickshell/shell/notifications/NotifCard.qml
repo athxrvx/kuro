@@ -29,12 +29,13 @@ Rectangle {
     readonly property string image: notif ? Notifications.iconSource(notif.image) : ""
     readonly property string appIcon: notif ? Notifications.iconSource(notif.appIcon) : ""
 
-    implicitHeight: col.implicitHeight + 24
-    radius: 0
-    color: compact ? (hover.hovered ? Theme.surface : "transparent") : Theme.bg
-    border.width: compact ? 0 : 1
-    border.color: critical ? Theme.danger : Theme.border
+    implicitHeight: col.implicitHeight + (compact ? 20 : 24)
+    radius: Theme.radiusSmall
+    color: hover.hovered ? Theme.surface2 : Theme.surface
+    border.width: 1
+    border.color: critical ? Theme.danger : hover.hovered ? Theme.accent : Theme.border
     Behavior on color { ColorAnimation { duration: 120 } }
+    Behavior on border.color { ColorAnimation { duration: 120 } }
 
     HoverHandler { id: hover }
 
@@ -64,30 +65,32 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.margins: 12
-        spacing: 8
+        anchors.margins: compact ? 12 : 14
+        spacing: compact ? 9 : 10
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 12
+            spacing: 14
 
             // Notification image (e.g. avatar) or app icon
             Item {
-                Layout.preferredWidth: 40
-                Layout.preferredHeight: 40
+                Layout.preferredWidth: compact ? 36 : 42
+                Layout.preferredHeight: compact ? 36 : 42
                 Layout.alignment: Qt.AlignTop
 
                 Rectangle {
                     anchors.fill: parent
                     radius: 0
-                    color: Theme.surface
+                    color: Theme.surface2
+                    border.width: 1
+                    border.color: Theme.border
                     visible: card.image === "" && card.appIcon === ""
 
                     Text {
                         anchors.centerIn: parent
                         text: Icons.bell
-                        color: Theme.subtext
-                        font.family: Theme.font
+                        color: Theme.accent
+                        font.family: Theme.iconFont
                         font.pixelSize: 22
                     }
                 }
@@ -134,11 +137,12 @@ Rectangle {
 
                     Text {
                         Layout.fillWidth: true
-                        text: card.notif ? (card.notif.appName || "Notification") : ""
+                        text: card.notif ? (card.notif.appName || "") : ""
+                        visible: !card.compact && text !== ""
                         color: Theme.muted
                         font.family: Theme.font
-                        font.pixelSize: 12
-                        font.letterSpacing: 1
+                        font.pixelSize: 11
+                        font.letterSpacing: 0.7
                         font.capitalization: Font.AllUppercase
                         elide: Text.ElideRight
                     }
@@ -146,7 +150,7 @@ Rectangle {
                         text: card.notif ? (card.refreshTick, Notifications.ago(card.notif.id)) : ""
                         color: Theme.muted
                         font.family: Theme.font
-                        font.pixelSize: 12
+                        font.pixelSize: 11
                     }
                     IconButton {
                         icon: Icons.close
@@ -161,7 +165,7 @@ Rectangle {
                     text: card.notif ? card.notif.summary : ""
                     color: Theme.text
                     font.family: Theme.font
-                    font.pixelSize: Theme.fontSize
+                    font.pixelSize: Math.max(12, Theme.fontSize - (card.compact ? 2 : 1))
                     font.bold: true
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
@@ -176,7 +180,7 @@ Rectangle {
                     color: Theme.subtext
                     linkColor: Theme.link
                     font.family: Theme.font
-                    font.pixelSize: Theme.fontSize - 1
+                    font.pixelSize: Math.max(11, Theme.fontSize - (card.compact ? 3 : 2))
                     wrapMode: Text.Wrap
                     maximumLineCount: card.compact ? 2 : 4
                     elide: Text.ElideRight
@@ -211,10 +215,10 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.leftMargin: card.radius
-        height: 2
+        height: 3
         radius: 0
         width: (parent.width - card.radius * 2) * card.progress
-        color: card.critical ? Theme.danger : Theme.subtext
-        opacity: 0.5
+        color: card.critical ? Theme.danger : Theme.accent
+        opacity: 0.82
     }
 }

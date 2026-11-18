@@ -14,6 +14,7 @@ Page {
     onPoll: {
         Battery.refresh();
         PowerProfile.refresh();
+        GpuStatus.refresh();
         SystemInfo.refresh();
     }
 
@@ -75,9 +76,21 @@ Page {
     // ── Power profile ─────────────────────────────────────────────────
     SectionLabel { Layout.topMargin: 6; text: "power profile" }
 
+    ListRow {
+        radius: 0
+        icon: Icons.cpu
+        title: GpuStatus.running ? "GPU running"
+            : GpuStatus.available ? "GPU idle" : "GPU status unavailable"
+        sub: GpuStatus.summary
+        trailing: GpuStatus.available ? GpuStatus.utilization + "%"
+            : Capture.recording ? "recording" : ""
+        active: GpuStatus.running
+        interactive: false
+    }
+
     Hint {
         visible: !PowerProfile.available
-        text: "powerprofilesctl not found. Install power-profiles-daemon (or tuned-ppd)."
+        text: "Power profiles are unavailable. Check that power-profiles-daemon or tuned-ppd is running."
     }
 
     ColumnLayout {
@@ -94,9 +107,15 @@ Page {
                 title: PowerProfile.pretty(modelData)
                 trailing: PowerProfile.current === modelData ? "active" : ""
                 active: PowerProfile.current === modelData
+                busy: PowerProfile.applying
                 onClicked: PowerProfile.set(modelData)
             }
         }
+    }
+
+    Hint {
+        visible: PowerProfile.error !== ""
+        text: PowerProfile.error
     }
 
     // ── Session ──────────────────────────────────────────────────────
